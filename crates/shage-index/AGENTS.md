@@ -90,10 +90,16 @@ pub enum Confidence {
 pub enum Resolution {
     Exact(SymbolRef),
     Heuristic(SymbolRef),
+    /// Never empty — see `Resolution::candidates`. A single candidate stays a candidate:
+    /// one name match is a weaker claim than scope analysis.
     Candidates(Vec<SymbolRef>),
     Unresolved,
 }
 impl Resolution {
+    /// The only honest way to build `Candidates`: an empty set of candidates is not a weak
+    /// answer, it is no answer, so it comes back as `Unresolved` rather than as a candidate
+    /// badge with nothing behind it.
+    pub fn candidates(targets: Vec<SymbolRef>) -> Resolution;
     pub fn confidence(&self) -> Confidence;
     /// The single target, or `None` for `Candidates` and `Unresolved`. Jumping to a
     /// candidate is the panel's decision to offer, not this crate's to make.
@@ -257,23 +263,26 @@ pub trait IndexBackend: Send {
 pub struct NullBackend;   // in src/backends/null.rs
 ```
 
-## The four freshness states
+## The freshness states
 
 An empty caller list means "nothing calls this" or "the index never saw this commit", and
-those are opposite conclusions. Three states read off the stamp, the fourth and fifth off
-`DiffSymbols::uncovered`:
+those are opposite conclusions. Four of the states below are degraded and one — the index
+commit matching the repo commit — is the healthy one. The four degraded ones are the four
+`follow/freshness` owes a snapshot test each: no index, index at a different commit, file
+missing from the index, file dirty since indexing.
 
 ```
-   IndexStamp                                    what the panel says
-   ────────────────────────────────────────────────────────────────────────────
-   indexed_commit: None                     →    "no index"
-   Some(a), repo_commit: Some(a)            →    "index at a1b2c3d"
-   Some(a), repo_commit: Some(b), a != b    →    "index at a1b2c3d, tree at 9f8e7d6"
+   IndexStamp                              what the panel says
+   ─────────────────────────────────────────────────────────────────────────────
+   indexed_commit: None                →    "no index"               degraded
+   Some(a), repo_commit: Some(a)       →    "index at a1b2c3d"       healthy
+   Some(a), repo_commit: Some(b), a≠b  →    "index at a1b2c3d,       degraded
+                                             tree at 9f8e7d6"
 
    DiffSymbols::uncovered
-   ────────────────────────────────────────────────────────────────────────────
-   FileCoverage::Missing                    →    "the index has never seen this file"
-   FileCoverage::Dirty                      →    "edited since indexing"
+   ─────────────────────────────────────────────────────────────────────────────
+   FileCoverage::Missing               →    "never seen this file"   degraded
+   FileCoverage::Dirty                 →    "edited since indexing"  degraded
 ```
 
 No two share a representation, and no state is the absence of the others.
@@ -301,12 +310,15 @@ divergent) later without touching this shape. Until then the stamp states facts.
    `stamp.indexed_commit == None`. A missing indexer is silence, not a failure dialog.
 2. **No value crosses the boundary unstamped.** Every `IndexBackend` method returns
    `Stamped<_>`; `Stamped` has no `Default` and no `From<T>`, so an empty `Vec` cannot
-   reach the TUI without the commit that produced it.
-3. **The five freshness states are distinguishable, and none is an absence.** The table
-   above is exhaustive and its rows do not overlap.
-4. **An unresolved answer carries no symbol, and a resolved one carries no doubt.**
-   `Resolution::Unresolved` holds no `SymbolRef`; `Resolution::confidence()` returns
-   `Unresolved` for exactly that variant and never for any other.
+   reach the TUI without the commit that produced it. The absence is itself tested, by a
+   `compile_fail` doctest on `Stamped`.
+3. **The freshness states are mutually exclusive, and none is an absence of another.** The
+   table above is exhaustive and its rows do not overlap: four degraded states plus the
+   healthy one.
+4. **A badge never outlives its evidence.** `Resolution::Unresolved` holds no `SymbolRef`;
+   `Resolution::candidates(vec![])` is `Unresolved`, so `Candidates` is never empty; and
+   `Resolution::confidence()` returns `Unresolved` for exactly the `Unresolved` variant and
+   never for any other.
 5. **`blast_radius` is bounded and says so.** `Blast::depth` equals the `depth` argument,
    for every backend, including Null.
 6. **Every contract type is `Send + 'static`, and the trait is object-safe.**
@@ -320,30 +332,29 @@ divergent) later without touching this shape. Until then the stamp states facts.
 
 | file | lines | contents |
 |---|---|---|
-| `AGENTS.md` | 388 | this note |
-| `src/contract.rs` | 316 | every type above, the trait, `IndexStamp::none()`, `Stamped::new()`, `Resolution::{confidence, one}`. No I/O, no `#[cfg(test)]` — the tests live outside so they exercise the surface the way a consumer does |
+| `AGENTS.md` | 399 | this note |
+| `src/contract.rs` | 349 | every type above, the trait, `IndexStamp::none()`, `Stamped::new()`, `Resolution::{confidence, one}`. No I/O, no `#[cfg(test)]` — the tests live outside so they exercise the surface the way a consumer does |
 | `src/backends/mod.rs` | 8 | `pub mod null;` and the re-export. Backend detection arrives with the scip slice |
 | `src/backends/null.rs` | 151 | `NullBackend`, its seven method bodies, and its unit tests |
 | `src/lib.rs` | 4 | one added line: `pub mod backends;` |
-| `tests/contract.rs` | 167 | the invariants that must hold from outside the crate |
+| `tests/contract.rs` | 186 | the invariants that must hold from outside the crate |
 | `Cargo.toml` | 6 | `thiserror = "2.0"`, the version shage-core already pins, so no new crate enters the lockfile — it gains only the dependency edge |
 
-No file over 400 lines. No file named helpers, utils, common or misc. If `contract.rs`
-approaches the cap while implementing, split the trait into `contract/backend.rs` behind a
-`contract/mod.rs` re-export rather than inventing a second cross-crate surface.
+No file over 400 lines, none named helpers, utils, common or misc. If `contract.rs` nears
+the cap, split the trait into `contract/backend.rs` behind a `contract/mod.rs` re-export.
 
 ## Test plan
 
-No fixtures. Nothing in this slice reads a repository, so there is nothing to fixture; the
-first fixtures arrive with `index/fixtures-oracle`.
+No fixtures: nothing here reads a repository. The first arrive with `index/fixtures-oracle`.
 
 | invariant | test | where |
 |---|---|---|
 | 1, never an error | `null_answers_ok_everywhere` — call all seven methods, assert `is_ok()` and `indexed_commit.is_none()` | `src/backends/null.rs` |
 | 1, empty everywhere | `null_answers_empty` — `Vec::is_empty()`, `definition` is `Unresolved`, `uncovered` is empty, `Blast` all-zero with `exported == false` | `src/backends/null.rs` |
-| 2, nothing unstamped | `stamped_needs_a_stamp` — build a `Stamped<Vec<SymbolRef>>` through the only constructor there is; the compiler-level half is that `Stamped` derives no `Default` and `stamp` is not `Option` | `tests/contract.rs` |
-| 3, states distinguishable | `freshness_states_are_distinct` — build the three stamps and the two `FileState`s, assert each matches exactly one row of the table and none of the others | `tests/contract.rs` |
-| 4, resolution honesty | `unresolved_holds_no_symbol` — `Resolution::Unresolved.one().is_none()`; `resolution_confidence_round_trips` — each variant maps to its own `Confidence` and `Candidates(vec![a, b]).one().is_none()` | `tests/contract.rs` |
+| 2, nothing unstamped | `stamp_travels_with_an_empty_value` — build a `Stamped<Vec<SymbolRef>>` through the only constructor there is | `tests/contract.rs` |
+| 2, the absence of `Default` | a `compile_fail` doctest on `Stamped` asserting `Stamped::default()` does not compile, paired with a passing doctest so the failure is attributable | `src/contract.rs` |
+| 3, states mutually exclusive | `stamp_states_compare_unequal` — build the three stamps and the two `FileState`s, assert each matches exactly one row of the table and none of the others. Whether the panel *renders* five different things is `follow/freshness`'s snapshot tests, not this one | `tests/contract.rs` |
+| 4, badge needs evidence | `unresolved_holds_no_symbol`; `candidates_are_never_empty` — `Resolution::candidates(vec![])` is `Unresolved` and a one-element list stays `Candidates`; `resolution_confidence_round_trips` — each variant maps to its own `Confidence` and `Candidates(vec![a, b]).one().is_none()` | `tests/contract.rs` |
 | 5, bounded depth | `null_blast_echoes_depth` — `blast_radius(&sym, 0)` and `(&sym, 7)` come back with `depth == 0` and `depth == 7` | `src/backends/null.rs` |
 | 6, Send and object-safe | `contract_types_are_send` — `fn assert_send<T: Send + 'static>() {}` over every contract type; `fn assert_object_safe(_: Box<dyn IndexBackend>) {}`; and a `NullBackend` moved into `thread::spawn` that sends a `Stamped<Vec<CallSite>>` back over an `mpsc::channel`, which is the shape of the real seam | `tests/contract.rs` |
 | 7, no silent defaults | `IndexBackend` has no default bodies, so an incomplete `impl` fails to compile. Asserted by review, not by a test — a test that proves a compile error needs `trybuild`, a dependency this crate will not take | — |
