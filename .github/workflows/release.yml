@@ -99,7 +99,7 @@ jobs:
 
   publish:
     name: Publish Release
-    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    if: false # shage: publishing disabled — crate name, README and self-updater still point at tuicr
     runs-on: ubuntu-latest
     permissions:
       contents: write

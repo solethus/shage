@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
@@ -63,8 +62,8 @@ jobs:
         run: cargo build --release --target x86_64-unknown-linux-musl
       - name: Verify static binary
         run: |
-          binary=target/x86_64-unknown-linux-musl/release/tuicr
-          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+          binary=target/x86_64-unknown-linux-musl/release/shage
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/shage-core/Cargo.toml | head -1)
           test "$("$binary" --version)" = "tuicr $version"
           if readelf -lW "$binary" | grep -Eq '(^|[[:space:]])INTERP([[:space:]]|$)'; then
             echo "Linux release binary contains a dynamic interpreter" >&2
