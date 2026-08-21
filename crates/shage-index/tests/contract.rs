@@ -91,6 +91,10 @@ fn unresolved_holds_no_symbol() {
 
 /// Invariant 4, half three: a candidate badge always has candidates behind it. An empty set
 /// is no answer, not a weak one, so the constructor gives back `Unresolved`.
+///
+/// The other half is structural and cannot be reached from here: `CandidateSet` holds a
+/// private `Vec`, so `Resolution::Candidates(CandidateSet(vec![]))` does not compile outside
+/// the crate. That half is the `compile_fail` doctest on `CandidateSet`.
 #[test]
 fn candidates_are_never_empty() {
     assert_eq!(Resolution::candidates(Vec::new()), Resolution::Unresolved);
@@ -100,11 +104,16 @@ fn candidates_are_never_empty() {
     );
 
     let one = symbol("Bucket::allow", 12);
+    let single = Resolution::candidates(vec![one.clone()]);
     assert_eq!(
-        Resolution::candidates(vec![one.clone()]),
-        Resolution::Candidates(vec![one]),
+        single.confidence(),
+        Confidence::Candidate,
         "a single name match stays a candidate — it is a weaker claim than Heuristic"
     );
+    match &single {
+        Resolution::Candidates(set) => assert_eq!(set.as_slice(), [one]),
+        other => panic!("expected Candidates, got {other:?}"),
+    }
 }
 
 /// Invariant 4, half two: every variant maps to its own badge, and only `Unresolved` maps
@@ -116,7 +125,7 @@ fn resolution_confidence_round_trips() {
 
     let exact = Resolution::Exact(one.clone());
     let heuristic = Resolution::Heuristic(one.clone());
-    let candidates = Resolution::Candidates(vec![one.clone(), two]);
+    let candidates = Resolution::candidates(vec![one.clone(), two]);
 
     assert_eq!(exact.confidence(), Confidence::Exact);
     assert_eq!(heuristic.confidence(), Confidence::Heuristic);

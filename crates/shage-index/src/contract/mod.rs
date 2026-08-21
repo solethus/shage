@@ -77,27 +77,71 @@ pub enum Confidence {
 /// avoid.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Resolution {
+    /// A compiler-backed index resolved it. One target, and the backend stands behind it.
     Exact(SymbolRef),
+    /// Scope and receiver analysis resolved it. One plausible target, not a proof.
     Heuristic(SymbolRef),
-    /// Never empty — build it with [`Resolution::candidates`], which collapses an empty
-    /// set to `Unresolved` so a candidate badge always has candidates behind it.
+    /// Several plausible targets, and never zero — the payload is a [`CandidateSet`], which
+    /// cannot be built empty. Construct it with [`Resolution::candidates`].
     ///
-    /// In backend order, which is not an invariant — the panel sorts for display. A single
-    /// candidate stays a candidate: one name match is a weaker claim than scope analysis,
-    /// and promoting it to `Heuristic` would overstate what the backend knows.
-    Candidates(Vec<SymbolRef>),
+    /// A single candidate stays a candidate: one name match is a weaker claim than scope
+    /// analysis, and promoting it to `Heuristic` would overstate what the backend knows.
+    Candidates(CandidateSet),
+    /// The backend could not resolve it. Holds no [`SymbolRef`], so there is nothing here to
+    /// misread as an answer.
     Unresolved,
 }
 
+/// A set of candidate targets that is never empty.
+///
+/// The `Vec` is private and [`Resolution::candidates`] is the only thing that fills it, so
+/// "never empty" is a property of the type rather than a rule each backend has to remember.
+/// Without it, `Resolution::Candidates(vec![])` is a Candidate badge with nothing behind it
+/// that any crate can write — the dishonest UI this project exists to avoid.
+///
+/// In backend order, which is not an invariant: the panel sorts for display.
+///
+/// ```
+/// use shage_index::contract::{Confidence, Resolution, SymId, SymbolRef};
+/// let sym = SymbolRef {
+///     sym_id: SymId::new("scip . . . `Bucket#allow().`"),
+///     display: "(*Bucket).Allow".to_string(),
+///     path: "src/lib.rs".into(),
+///     line: 12,
+/// };
+/// let answer = Resolution::candidates(vec![sym]);
+/// assert_eq!(answer.confidence(), Confidence::Candidate);
+/// match &answer {
+///     Resolution::Candidates(set) => assert_eq!(set.as_slice().len(), 1),
+///     other => panic!("expected candidates, got {other:?}"),
+/// }
+/// ```
+///
+/// The emptiness is the invariant, so it is tested as one — this must not compile:
+///
+/// ```compile_fail
+/// use shage_index::contract::{CandidateSet, Resolution};
+/// let _ = Resolution::Candidates(CandidateSet(Vec::new()));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateSet(Vec<SymbolRef>);
+
+impl CandidateSet {
+    /// The candidates. Never empty, and in backend order rather than a ranked one.
+    pub fn as_slice(&self) -> &[SymbolRef] {
+        &self.0
+    }
+}
+
 impl Resolution {
-    /// The only honest way to build [`Resolution::Candidates`]: an empty set of candidates
-    /// is not a weak answer, it is no answer, so it comes back as `Unresolved` rather than
-    /// as a candidate badge with nothing behind it.
+    /// The only way to build [`Resolution::Candidates`], because [`CandidateSet`] holds a
+    /// private `Vec`: an empty set of candidates is not a weak answer, it is no answer, so
+    /// it comes back as `Unresolved` rather than as a candidate badge with nothing behind it.
     pub fn candidates(targets: Vec<SymbolRef>) -> Self {
         if targets.is_empty() {
             Resolution::Unresolved
         } else {
-            Resolution::Candidates(targets)
+            Resolution::Candidates(CandidateSet(targets))
         }
     }
 
@@ -136,17 +180,25 @@ pub struct CallSite {
     pub path: PathBuf,
     /// 1-based line of the call, in the same file as `path`.
     pub line: u32,
+    /// What the call resolves to, and how much this edge is worth. Carried per site, so a
+    /// heuristic edge is never rendered as a compiler-backed one.
     pub target: Resolution,
 }
 
 /// A commit that touched a symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitRef {
+    /// The full commit id as the backend's VCS writes it. Opaque: never truncated here, and
+    /// never parsed — [`CommitRef::short_id`] is the abbreviated form.
     pub id: String,
     /// A prefix of `id`, abbreviated by the backend rather than by the panel, so a repo
     /// with colliding short hashes still renders unambiguous ones.
     pub short_id: String,
+    /// The first line of the commit message, never the body: the panel has one row per
+    /// commit and a wrapped body would push the next one off the screen.
     pub summary: String,
+    /// Display name, backend-formatted. For display only — never matched against a user or
+    /// parsed for an address.
     pub author: String,
     /// `std::time`, not chrono: this crate formats nothing and depends on nothing that
     /// does. The render site converts in one infallible line, because chrono provides
@@ -159,6 +211,8 @@ pub struct CommitRef {
 /// The caller already holds parsed hunks, so this crate never learns what a patch is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangedFile {
+    /// Repository-relative, new-side. Same convention as [`SymbolRef::path`]: never
+    /// absolute, never `/`-prefixed, no `..`.
     pub path: PathBuf,
     /// 1-based, inclusive, new-side. Empty for a pure deletion.
     pub new_lines: Vec<RangeInclusive<u32>>,
@@ -179,7 +233,11 @@ pub enum FileCoverage {
 /// One file the index cannot speak for, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileState {
+    /// One of the paths the caller passed to [`IndexBackend::symbols_in_diff`], echoed
+    /// unchanged so the caller can match it against its own input.
     pub path: PathBuf,
+    /// Why the index cannot speak for [`FileState::path`]. The two variants are different
+    /// conclusions for a reviewer, so they are never collapsed into "no data".
     pub coverage: FileCoverage,
 }
 
@@ -189,6 +247,8 @@ pub struct FileState {
 /// never seen three of these files", which are opposite conclusions for a reviewer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffSymbols {
+    /// Symbols whose definitions contain at least one changed line. Empty is a real answer,
+    /// but only readable alongside `uncovered` and the stamp — never on its own.
     pub symbols: Vec<SymbolRef>,
     /// One entry per input file the index cannot speak for. A file absent from this list is
     /// covered at [`IndexStamp::indexed_commit`].
@@ -245,7 +305,11 @@ impl IndexStamp {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stamped<T> {
+    /// Which index produced [`Stamped::value`], and which commit the repository was on when
+    /// it did.
     pub stamp: IndexStamp,
+    /// The answer. Never interpret it without [`Stamped::stamp`]: an empty value is not a
+    /// zero until the stamp says the index was there to count.
     pub value: T,
 }
 
@@ -296,6 +360,8 @@ pub enum IndexError {
     #[error("unsupported by this index backend: {0}")]
     Unsupported(&'static str),
 
+    /// The backend touched the filesystem and it failed. Distinct from `Corrupt`: the bytes
+    /// were never read, rather than read and not understood.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -305,45 +371,6 @@ pub enum IndexError {
 /// choice.
 pub type Result<T> = std::result::Result<T, IndexError>;
 
-/// Mirrors `VcsBackend: Send` (`crates/shage-core/src/vcs/traits.rs`) for shape and naming,
-/// with one deliberate divergence: no method has a default body.
-///
-/// `VcsBackend` defaults to an unsupported-operation error because its backends differ in
-/// *capability* — Mercurial has no index to stage against. `IndexBackend`'s backends differ
-/// in *precision*, and precision must never be expressed as a missing implementation. A
-/// default here would let a half-written backend compile and answer "nothing calls this". A
-/// backend that genuinely cannot answer says so with [`IndexError::Unsupported`].
-///
-/// `Send` because every answer crosses an `std::sync::mpsc` channel from a worker thread
-/// into the TUI tick loop.
-pub trait IndexBackend: Send {
-    /// The freshness of the index itself, with no query attached. The status bar shows this
-    /// before the reviewer asks anything, so "no index" is visible before an empty panel
-    /// can be misread.
-    fn stamp(&self) -> Result<IndexStamp>;
+mod backend;
 
-    /// The symbols whose definitions contain the given changed lines, plus the files this
-    /// index cannot speak for.
-    fn symbols_in_diff(&self, files: &[ChangedFile]) -> Result<Stamped<DiffSymbols>>;
-
-    /// Where the symbol is defined, and how sure the backend is that this is it.
-    fn definition(&self, sym: &SymId) -> Result<Stamped<Resolution>>;
-
-    /// The call sites that reach this symbol. Each carries its own [`Resolution`], so a
-    /// heuristic edge is never presented as a compiler-backed one.
-    fn callers(&self, sym: &SymId) -> Result<Stamped<Vec<CallSite>>>;
-
-    /// The call sites written inside this symbol's body.
-    fn callees(&self, sym: &SymId) -> Result<Stamped<Vec<CallSite>>>;
-
-    /// Commits that touched this symbol, most recent first. `limit` is a hard cap, not a
-    /// hint; `0` returns empty.
-    fn history(&self, sym: &SymId, limit: usize) -> Result<Stamped<Vec<CommitRef>>>;
-
-    /// What changing this symbol would reach, walked no further than `depth` hops.
-    ///
-    /// `depth` is not optional and has no default: an unbounded walk on a real workspace is
-    /// a hang, and a hang in a TUI reads as a crash. The returned [`Blast::depth`] echoes
-    /// this argument.
-    fn blast_radius(&self, sym: &SymId, depth: u8) -> Result<Stamped<Blast>>;
-}
+pub use backend::IndexBackend;

@@ -1,6 +1,6 @@
 # shage-index — the crate contract
 
-The slice doc for `src/contract.rs` and `src/backends/null.rs`. Every other slice in this
+The slice doc for `src/contract/` and `src/backends/null.rs`. Every other slice in this
 crate (`scip/`, `classify/`, `callgraph/`, `freshness/`, `resolve/`) gets its own
 AGENTS.md; `backends/` gets one when the scip backend lands, per the carry-over list in
 `docs/prompts/README.md`.
@@ -39,7 +39,9 @@ way out, so an empty `Vec` can never be mistaken for a confident zero.
 ## Public surface
 
 Everything below is `#[derive(Debug, Clone)]`, owned, `Send + 'static`, and lives in
-`src/contract.rs`. Nothing else in the crate is `pub` outside its slice.
+`src/contract/` (`mod.rs` for the types, `backend.rs` for the trait, re-exported so the
+public path stays `contract::IndexBackend`). Nothing else in the crate is `pub` outside its
+slice.
 
 ```rust
 /// An opaque symbol identity, as produced by whichever backend is installed.
@@ -90,15 +92,24 @@ pub enum Confidence {
 pub enum Resolution {
     Exact(SymbolRef),
     Heuristic(SymbolRef),
-    /// Never empty — see `Resolution::candidates`. A single candidate stays a candidate:
-    /// one name match is a weaker claim than scope analysis.
-    Candidates(Vec<SymbolRef>),
+    /// Never empty, structurally — the payload cannot be built empty. A single candidate
+    /// stays a candidate: one name match is a weaker claim than scope analysis.
+    Candidates(CandidateSet),
     Unresolved,
 }
+
+/// A set of candidate targets that is never empty, because the `Vec` is private and
+/// `Resolution::candidates` is the only thing that fills it — see invariant 4.
+pub struct CandidateSet(Vec<SymbolRef>);   // private field on purpose
+impl CandidateSet {
+    /// Never empty, and in backend order rather than a ranked one.
+    pub fn as_slice(&self) -> &[SymbolRef];
+}
+
 impl Resolution {
-    /// The only honest way to build `Candidates`: an empty set of candidates is not a weak
-    /// answer, it is no answer, so it comes back as `Unresolved` rather than as a candidate
-    /// badge with nothing behind it.
+    /// The only way to build `Candidates`, because `CandidateSet` holds a private `Vec`: an
+    /// empty set of candidates is not a weak answer, it is no answer, so it comes back as
+    /// `Unresolved` rather than as a candidate badge with nothing behind it.
     pub fn candidates(targets: Vec<SymbolRef>) -> Resolution;
     pub fn confidence(&self) -> Confidence;
     /// The single target, or `None` for `Candidates` and `Unresolved`. Jumping to a
@@ -126,10 +137,7 @@ pub struct CommitRef {
     pub short_id: String,
     pub summary: String,
     pub author: String,
-    /// `std::time`, not chrono: this crate formats nothing and depends on nothing that
-    /// does. The render site converts in one line — chrono has
-    /// `impl From<SystemTime> for DateTime<Utc>` under its `std` feature, which shage-core
-    /// already enables, and it is infallible.
+    /// `std::time`, not chrono — see Decisions.
     pub time: SystemTime,
 }
 
@@ -170,12 +178,7 @@ pub struct IndexStamp {
     /// The commit the index was built from. `None` means there is no index at all.
     pub indexed_commit: Option<String>,
     /// The commit the repository was on when the backend answered. `None` when the backend
-    /// is not attached to a repository.
-    ///
-    /// Deliberately a commit and not a distance. Computing "N commits behind" needs an
-    /// ancestry walk this crate does not do, and on a stacked pull request the index is
-    /// usually not an ancestor at all — it is on a sibling branch, where "behind" is a
-    /// lie. Rendering both ids is correct in every topology.
+    /// is not attached to a repository. A commit, deliberately not a distance — see below.
     pub repo_commit: Option<String>,
     /// Working-tree edits were folded into this answer.
     pub overlay: bool,
@@ -220,24 +223,16 @@ pub enum IndexError {
     Corrupt(String),
     /// The backend needs a file or a program that is not there.
     Unavailable(String),
-    /// This backend structurally cannot answer this question — a SCIP index file holds no
-    /// git history, so its `history` is `Unsupported("scip: no commit data")`, never an
-    /// empty list. `&'static str` on purpose: this is a fixed statement about a backend's
-    /// capabilities, not a runtime detail.
+    /// Structurally cannot answer — a SCIP index holds no git history, so its `history` is
+    /// `Unsupported("scip: no commit data")`, never an empty list. See invariant 7.
     Unsupported(&'static str),
     Io(#[from] std::io::Error),
 }
 pub type Result<T> = std::result::Result<T, IndexError>;
 
 /// Mirrors `VcsBackend: Send` (crates/shage-core/src/vcs/traits.rs) for shape and naming,
-/// with one deliberate divergence: no method has a default body.
-///
-/// `VcsBackend` defaults to `Err(UnsupportedOperation)` because its backends differ in
-/// *capability* — Mercurial has no index to stage against. `IndexBackend`'s backends
-/// differ in *precision*, and precision must never be expressed as a missing
-/// implementation. A default here would let a half-written backend compile and answer
-/// "nothing calls this". A backend that genuinely cannot answer says so out loud with
-/// `IndexError::Unsupported`.
+/// with one deliberate divergence: no method has a default body, because those backends
+/// differ in *capability* and these differ in *precision*. See invariant 7.
 pub trait IndexBackend: Send {
     /// The freshness of the index itself, with no query attached. Drives the status bar.
     fn stamp(&self) -> Result<IndexStamp>;
@@ -311,14 +306,15 @@ divergent) later without touching this shape. Until then the stamp states facts.
 2. **No value crosses the boundary unstamped.** Every `IndexBackend` method returns
    `Stamped<_>`; `Stamped` has no `Default` and no `From<T>`, so an empty `Vec` cannot
    reach the TUI without the commit that produced it. The absence is itself tested, by a
-   `compile_fail` doctest on `Stamped`.
+   `compile_fail` doctest on `Stamped` — the same trick guards `CandidateSet`, see 4.
 3. **The freshness states are mutually exclusive, and none is an absence of another.** The
    table above is exhaustive and its rows do not overlap: four degraded states plus the
    healthy one.
 4. **A badge never outlives its evidence.** `Resolution::Unresolved` holds no `SymbolRef`;
-   `Resolution::candidates(vec![])` is `Unresolved`, so `Candidates` is never empty; and
-   `Resolution::confidence()` returns `Unresolved` for exactly the `Unresolved` variant and
-   never for any other.
+   `Resolution::candidates(vec![])` is `Unresolved`, and `Candidates` is never empty
+   *structurally* — `CandidateSet`'s `Vec` is private, so an outside crate cannot construct,
+   destructure or `Default` its way to an empty one; and `Resolution::confidence()` returns
+   `Unresolved` for exactly the `Unresolved` variant and never for any other.
 5. **`blast_radius` is bounded and says so.** `Blast::depth` equals the `depth` argument,
    for every backend, including Null.
 6. **Every contract type is `Send + 'static`, and the trait is object-safe.**
@@ -333,15 +329,18 @@ divergent) later without touching this shape. Until then the stamp states facts.
 | file | lines | contents |
 |---|---|---|
 | `AGENTS.md` | 399 | this note |
-| `src/contract.rs` | 349 | every type above, the trait, `IndexStamp::none()`, `Stamped::new()`, `Resolution::{confidence, one}`. No I/O, no `#[cfg(test)]` — the tests live outside so they exercise the surface the way a consumer does |
+| `src/contract/mod.rs` | 376 | every type above, `IndexStamp::none()`, `Stamped::new()`, `Resolution::{candidates, confidence, one}`, `CandidateSet::as_slice()`. No I/O, no `#[cfg(test)]` — the tests live outside so they exercise the surface the way a consumer does |
+| `src/contract/backend.rs` | 54 | the `IndexBackend` trait alone, re-exported by `mod.rs` so the public path stays `contract::IndexBackend` |
 | `src/backends/mod.rs` | 8 | `pub mod null;` and the re-export. Backend detection arrives with the scip slice |
 | `src/backends/null.rs` | 151 | `NullBackend`, its seven method bodies, and its unit tests |
-| `src/lib.rs` | 4 | one added line: `pub mod backends;` |
-| `tests/contract.rs` | 186 | the invariants that must hold from outside the crate |
-| `Cargo.toml` | 6 | `thiserror = "2.0"`, the version shage-core already pins, so no new crate enters the lockfile — it gains only the dependency edge |
+| `src/lib.rs` | 9 | `pub mod backends;`, `pub mod contract;`, and `#![deny(missing_docs)]` |
+| `tests/contract.rs` | 195 | the invariants that must hold from outside the crate |
+| `Cargo.toml` | 7 | `thiserror = "2.0"`, the version shage-core already pins, so no new crate enters the lockfile — it gains only the dependency edge |
 
-No file over 400 lines, none named helpers, utils, common or misc. If `contract.rs` nears
-the cap, split the trait into `contract/backend.rs` behind a `contract/mod.rs` re-export.
+No file over 400 lines, none named helpers, utils, common or misc. `contract.rs` reached the
+cap and was split as planned: the trait moved to `contract/backend.rs` behind a
+`contract/mod.rs` re-export, which is why the public path is unchanged. The `lines` column
+above is hand-maintained and rots on any edit — treat it as a sketch, not a fact.
 
 ## Test plan
 
@@ -352,8 +351,9 @@ No fixtures: nothing here reads a repository. The first arrive with `index/fixtu
 | 1, never an error | `null_answers_ok_everywhere` — call all seven methods, assert `is_ok()` and `indexed_commit.is_none()` | `src/backends/null.rs` |
 | 1, empty everywhere | `null_answers_empty` — `Vec::is_empty()`, `definition` is `Unresolved`, `uncovered` is empty, `Blast` all-zero with `exported == false` | `src/backends/null.rs` |
 | 2, nothing unstamped | `stamp_travels_with_an_empty_value` — build a `Stamped<Vec<SymbolRef>>` through the only constructor there is | `tests/contract.rs` |
-| 2, the absence of `Default` | a `compile_fail` doctest on `Stamped` asserting `Stamped::default()` does not compile, paired with a passing doctest so the failure is attributable | `src/contract.rs` |
+| 2, the absence of `Default` | a `compile_fail` doctest on `Stamped` asserting `Stamped::default()` does not compile, paired with a passing doctest so the failure is attributable | `src/contract/mod.rs` |
 | 3, states mutually exclusive | `stamp_states_compare_unequal` — build the three stamps and the two `FileState`s, assert each matches exactly one row of the table and none of the others. Whether the panel *renders* five different things is `follow/freshness`'s snapshot tests, not this one | `tests/contract.rs` |
+| 4, `Candidates` never empty | a `compile_fail` doctest on `CandidateSet` asserting `Resolution::Candidates(CandidateSet(Vec::new()))` does not compile outside the crate, paired with a passing one so the failure is attributable. Construction, destructuring and `Default` are all rejected (E0423, E0532, E0277) | `src/contract/mod.rs` |
 | 4, badge needs evidence | `unresolved_holds_no_symbol`; `candidates_are_never_empty` — `Resolution::candidates(vec![])` is `Unresolved` and a one-element list stays `Candidates`; `resolution_confidence_round_trips` — each variant maps to its own `Confidence` and `Candidates(vec![a, b]).one().is_none()` | `tests/contract.rs` |
 | 5, bounded depth | `null_blast_echoes_depth` — `blast_radius(&sym, 0)` and `(&sym, 7)` come back with `depth == 0` and `depth == 7` | `src/backends/null.rs` |
 | 6, Send and object-safe | `contract_types_are_send` — `fn assert_send<T: Send + 'static>() {}` over every contract type; `fn assert_object_safe(_: Box<dyn IndexBackend>) {}`; and a `NullBackend` moved into `thread::spawn` that sends a `Stamped<Vec<CallSite>>` back over an `mpsc::channel`, which is the shape of the real seam | `tests/contract.rs` |
