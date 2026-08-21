@@ -53,3 +53,15 @@ Work never lands on `main` directly; each prompt names the branch it produces.
 | 02 → 03 → 04 | `follow/blast` | blast radius and the ranked file tree |
 
 Next up: `02-contract.md` carries a pre-filled "next run" block for `index/contract`.
+
+## Carry-overs
+Something a design note deferred, and the branch that has to discharge it. Add a row when
+you defer; delete it when the branch lands. Written down so the inheriting run does not
+have to rediscover why.
+
+| branch | obligation | from |
+|---|---|---|
+| `index/scip` | write `crates/shage-index/src/backends/AGENTS.md`. The crate note covers `null.rs` alone; `backends/` becomes a real slice once a second backend lands | `crates/shage-index/AGENTS.md` |
+| `index/scip` | backend detection — `detect()` and the config key that picks one. Detection never errors and never blocks startup: a missing indexer is silence, not a warning dialog | same |
+| whichever of `index/classify` or `follow/panel` first renders a `Candidates` badge | add the call expression to `CallSite` (`text`, e.g. `"l.Allow"`). It is the evidence for a candidate edge, and a candidate rendered without its evidence is the dishonest-UI failure this project exists to avoid | same |
+| `follow/blast` | add `is_test` to `Blast` for ranking's test de-weighting. `exported` is already on `Blast`; neither belongs on `SymbolRef`, which stays a location | same |
