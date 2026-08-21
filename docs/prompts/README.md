@@ -29,8 +29,10 @@ Work never lands on `main` directly; each prompt names the branch it produces.
 1. Start or extend a stack: `gh stack init <area>/<slug>` (new stack rooted at `main`) or, while on
    the top branch of an existing stack, `gh stack add <area>/<slug>`.
 2. Commit on that branch — one logical commit where possible; the subject is the PR title.
-3. Open the PR yourself (on this fork gh-stack pushes but cannot open or find PRs):
-   `gh pr create --repo solethus/shage --draft --fill --base <branch below> --head <branch>`
+3. Open the PR yourself (on this fork gh-stack pushes but cannot open or find PRs), with a
+   description written to `.github/PULL_REQUEST_TEMPLATE.md`:
+   `gh pr create --repo solethus/shage --draft --base <branch below> --head <branch> --title "<subject>" --body-file <file>`
+   Mark it ready once the gates pass: `gh pr ready <n> --repo solethus/shage`.
 4. To update: commit or amend, `git push --force-with-lease origin <branch>`; after changing a
    lower layer, `gh stack rebase --upstack` and push the layers above.
 5. Until PRs #1/#2 (the `bootstrap/*` stack) are merged, new work stacks on top of

@@ -24,10 +24,13 @@ an ordered chain of branches, each one PR whose base is the branch below it.
   `cargo test --workspace`, `cargo xtask seams --check`.
 - Known limitation (2026-08-21, gh-stack v0.1.0): on this fork `gh stack submit`/`sync`/`link`
   push branches fine but cannot create or find PRs — they resolve PRs against the parent repo
-  (agavra/tuicr). Open each PR explicitly instead, bottom to top:
-  `gh pr create --repo solethus/shage --draft --fill --base <branch below> --head <branch>`.
-  Local stack tracking (`init`/`add`/`view --json`/`rebase`) still works. Revisit when the
-  extension handles forks, or once the repo is no longer marked as a fork.
+  (agavra/tuicr). Open each PR explicitly instead, bottom to top, with a description that
+  follows `.github/PULL_REQUEST_TEMPLATE.md` (GitHub only auto-applies it for PRs against
+  `main` once it is there, so pass it explicitly):
+  `gh pr create --repo solethus/shage --draft --base <branch below> --head <branch> --title "<subject>" --body-file <file>`,
+  then `gh pr ready <n> --repo solethus/shage` once the gates pass. Local stack tracking
+  (`init`/`add`/`view --json`/`rebase`) still works. Revisit when the extension handles forks,
+  or once the repo is no longer marked as a fork.
 
 ## Upstream syncs (weekly) — prompt 06
 1. `git fetch upstream`, then on a branch `sync/tuicr-vX.Y.Z` cut from `main`:
