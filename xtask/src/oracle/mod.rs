@@ -25,10 +25,13 @@ use scoring::{Disagreement, Got, Score};
 
 /// Runs every fixture, prints the table, and fails on a regression against the floor.
 pub fn run(root: &Path, bless: bool) -> ExitCode {
-    if let Err(message) = check_indexer() {
-        eprintln!("{message}");
-        return ExitCode::FAILURE;
-    }
+    let indexer = match check_indexer() {
+        Ok(version) => version,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
+        }
+    };
     let floor = match baseline::Baseline::load(root) {
         Ok(floor) => floor,
         Err(err) => {
@@ -60,6 +63,10 @@ pub fn run(root: &Path, bless: bool) -> ExitCode {
         }
     }
 
+    // Printed above the table because the floor is a measurement of *this* indexer's
+    // answers. A different version moves the numbers for reasons that have nothing to do
+    // with our resolver, and the version is the first thing to check when it does.
+    println!("graded against {indexer}\n");
     print_table(&measured);
     print_disagreements(&reports);
 
@@ -265,14 +272,17 @@ fn head(dir: &Path) -> Option<String> {
         .filter(|commit| !commit.is_empty())
 }
 
-/// Fails with something actionable when the indexer is not usable.
+/// The indexer's version, or something actionable about why there is not one.
 ///
 /// It runs the binary rather than probing `PATH`, because on a rustup toolchain `PATH`
 /// lies: `rust-analyzer` is a shim that exists whether or not the component is installed,
-/// and only running it says which.
-fn check_indexer() -> Result<(), String> {
+/// and only running it says which. The version comes back rather than being discarded
+/// because the baseline is only comparable against the version that produced it.
+fn check_indexer() -> Result<String, String> {
     match Command::new("rust-analyzer").arg("--version").output() {
-        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) if output.status.success() => {
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        }
         Ok(output) => Err(format!(
             "oracle: `rust-analyzer --version` failed:\n  {}\n\
              It is on PATH but not usable — on a rustup toolchain that means the component \

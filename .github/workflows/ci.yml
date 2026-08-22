@@ -16,7 +16,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check
+      - run: cargo check --workspace
+      # Cheap, and it rides along here rather than claiming a runner of its own: the
+      # workspace is already built by the line above.
+      - run: cargo xtask seams --check
 
   # shage: the two lint jobs are pinned, and only they. rustfmt and clippy add rules in
   # every release, so a freshly resolved `stable` turns a branch red with no code change --
@@ -44,7 +47,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
   static-linux:
     name: Static Linux binary
@@ -91,4 +94,23 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
       - name: Install Jujutsu (if missing)
         run: command -v jj || cargo binstall --strategies crate-meta-data jj-cli --no-confirm
-      - run: cargo test
+      - run: cargo test --workspace
+
+  oracle:
+    name: Differential oracle
+    needs: [check, fmt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned, and for a different reason than the lint jobs above: `oracle.baseline` is a
+      # measurement of one indexer's answers, so it is only comparable against the version
+      # that produced it. A floating rust-analyzer would move the numbers under the floor
+      # and read as a regression in our resolver. Bump this pin and re-bless together, never
+      # separately.
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rust-analyzer
+      - uses: Swatinem/rust-cache@v2
+      - run: rust-analyzer --version
+      - run: cargo xtask fixtures
+      - run: cargo xtask oracle

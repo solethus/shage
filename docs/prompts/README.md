@@ -18,7 +18,8 @@ first; the prompts themselves stay short because the shared facts live here.
   not Send). The forge pattern — snapshot inputs, std thread, `std::sync::mpsc`, drain each tick,
   mutate `App` only on the main thread — is the concurrency model everything index-related copies.
 - Gates for every PR: `cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`,
-  `cargo test --workspace`, `cargo xtask seams --check`. No new dependencies without asking.
+  `cargo test --workspace`, `cargo xtask seams --check`. CI runs all four across the whole
+  workspace, plus `cargo xtask oracle`. No new dependencies without asking.
 - The Format and Clippy jobs are pinned to a Rust version in `ci.yml`; `check` and `test`
   still track `stable`. rustfmt and clippy add rules in every release, and a fork that must
   not edit vendored code cannot fix what a newer lint finds there — clippy 1.98 flagged
@@ -72,8 +73,7 @@ have to rediscover why.
 | whichever branch first has a backend carrying commit data | test the two halves of the history contract that are still vacuous: most-recent-first ordering, and `limit` as a hard cap. Neither existing backend can produce a single `CommitRef` to order, so both are asserted by review today | `crates/shage-index/tests/backends.rs` |
 | `follow/blast` | add `is_test` to `Blast` for ranking's test de-weighting. `exported` is already on `Blast`; neither belongs on `SymbolRef`, which stays a location | `crates/shage-index/AGENTS.md` |
 | `follow/blast` | give `Blast::exported` a source. Both backends report `false` — SCIP carries no visibility and a syntactic pass sees `pub` without knowing whether the module around it is reachable — and false means "not known to be exported", which under-ranks rather than over-ranks | `crates/shage-index/src/scip/AGENTS.md` |
-| not a branch — CI | repoint `ci.yml` for the fork: it still runs bare `cargo check`/`clippy`/`test` against `default-members`, so nothing outside `shage-core` is built there. `--workspace` everywhere, plus an oracle job with `rustup component add rust-analyzer` | `xtask/AGENTS.md` |
-| not a branch — CI | unpin the Format and Clippy toolchain once `crates/shage-core/src/vcs/jj/mod.rs:181` no longer trips `clippy::chunks_exact_to_as_chunks`, whether upstream fixes it or a `docs/SEAMS.md` row lets us. A pin that outlives its reason is a fork stuck on an old lint set | `.github/workflows/ci.yml` |
+| not a branch — CI | unpin the Format, Clippy and oracle toolchains once `crates/shage-core/src/vcs/jj/mod.rs:181` no longer trips `clippy::chunks_exact_to_as_chunks`, whether upstream fixes it or a `docs/SEAMS.md` row lets us. A pin that outlives its reason is a fork stuck on an old lint set. The oracle job's pin is separate and outlives that one: it exists because the baseline is only comparable against the indexer version that produced it, so bump it and re-bless together | `.github/workflows/ci.yml` |
 
 Discharged by `index/fixtures-oracle`: `crates/shage-index/src/backends/AGENTS.md`, backend
 detection, `CallSite::text`, and the four invariants `NullBackend` satisfied vacuously (two
