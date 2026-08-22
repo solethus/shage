@@ -5,3 +5,17 @@ edition = "2024"
 
 [dependencies]
 thiserror = "2.0"
+# Reading a SCIP index. Generated protobuf types only — the encoding is the protocol's,
+# not ours, and hand-rolling a reader means drifting from it silently.
+scip = "0.9"
+# `scip` hands back protobuf messages and its own API cannot decode one, so this is the
+# same crate's parse half rather than a second dependency: it is already in the tree.
+protobuf = "3"
+# The tier-1 pass: parse Rust without building it, for repos that will not build.
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+
+[dev-dependencies]
+# Line attribution is an off-by-one bug waiting to happen; hand-picked ranges would never
+# find it. Generated ranges plus shrinking do.
+proptest = "1.11"

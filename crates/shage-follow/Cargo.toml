@@ -2,3 +2,9 @@
 name = "shage-follow"
 version = "0.1.0"
 edition = "2024"
+
+[dependencies]
+# The same version shage-core pins, so the workspace resolves one ratatui rather than two.
+ratatui = "0.30"
+# Panel state is a view over index answers; the index never depends back on this.
+shage-index = { path = "../shage-index" }

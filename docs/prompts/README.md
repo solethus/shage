@@ -19,6 +19,11 @@ first; the prompts themselves stay short because the shared facts live here.
   mutate `App` only on the main thread — is the concurrency model everything index-related copies.
 - Gates for every PR: `cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`,
   `cargo test --workspace`, `cargo xtask seams --check`. No new dependencies without asking.
+- The Format and Clippy jobs are pinned to a Rust version in `ci.yml`; `check` and `test`
+  still track `stable`. rustfmt and clippy add rules in every release, and a fork that must
+  not edit vendored code cannot fix what a newer lint finds there — clippy 1.98 flagged
+  `crates/shage-core/src/vcs/jj/mod.rs:181` and turned every branch red. Develop against the
+  pinned version, and bump it in the commit that fixes what the newer lint found.
 - No `Co-Authored-By` or any other AI attribution on commits, PRs or PR comments.
 - Local quirk (this Mac): if a build fails at link time with `undefined symbols: _iconv` from
   `libgit2_sys`, run cargo with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=/usr/bin/cc`.
@@ -44,15 +49,15 @@ Work never lands on `main` directly; each prompt names the branch it produces.
 |---|---|---|
 | 02 → 03 | `index/contract` | contract.rs types, `IndexBackend` trait, `NullBackend` |
 | 02 → 03 → 04 | `index/seams` | the six seams in shage-core, wired to nothing (SEAMS.md rows) |
-| 02 → 03 | `index/scip` | load index.scip, roles, enclosing-definition tree |
-| 05 | `index/fixtures-oracle` | `cargo xtask fixtures` / `cargo xtask oracle` |
+| 05 | `index/fixtures-oracle` | `cargo xtask fixtures` / `cargo xtask oracle`, and the two backends they grade — `index/scip` was folded in here rather than run separately, because an oracle with nothing to read and nothing to grade is not an oracle |
 | 02 → 03 → 04 | `index/classify` | call-position classification, Unknown stays Unknown |
 | 02 → 03 → 04 | `index/callgraph` | edges, bounded walks, `shage index callers` CLI |
 | 02 → 03 → 04 | `follow/panel` | the follow panel — first user-visible feature (new stack) |
 | 02 → 03 | `follow/freshness` | stamps and the four empty states |
 | 02 → 03 → 04 | `follow/blast` | blast radius and the ranked file tree |
 
-Next up: `02-contract.md` carries a pre-filled "next run" block for `index/contract`.
+Next up: `index/classify` (receiver typing, which is what three of the seven fixtures are
+waiting for), then `index/seams`.
 
 ## Carry-overs
 Something a design note deferred, and the branch that has to discharge it. Add a row when
@@ -61,9 +66,18 @@ have to rediscover why.
 
 | branch | obligation | from |
 |---|---|---|
-| `index/scip` | write `crates/shage-index/src/backends/AGENTS.md`. The crate note covers `null.rs` alone; `backends/` becomes a real slice once a second backend lands | `crates/shage-index/AGENTS.md` |
-| `index/scip` | backend detection — `detect()` and the config key that picks one. Detection never errors and never blocks startup: a missing indexer is silence, not a warning dialog | same |
-| whichever of `index/classify` or `follow/panel` first renders a `Candidates` badge | add the call expression to `CallSite` (`text`, e.g. `"l.Allow"`). It is the evidence for a candidate edge, and a candidate rendered without its evidence is the dishonest-UI failure this project exists to avoid | same |
-| `follow/blast` | add `is_test` to `Blast` for ranking's test de-weighting. `exported` is already on `Blast`; neither belongs on `SymbolRef`, which stays a location | same |
+| `index/seams` | the config key that overrides `backends::detect()`. The order is precision-first and fixed in code; overriding it needs a seam in `shage-core` that `index/fixtures-oracle` was not allowed to cut | `crates/shage-index/src/backends/AGENTS.md` |
 | `index/seams` | decide how a backend reaches a worker thread. `IndexBackend: Send` allows a move, not sharing, and every method takes `&self`. Upstream does not share either — the diff-watch worker moves a `Copy` options struct and re-opens the VCS inside the thread (`crates/shage-core/src/app/diff_load.rs:1046`) — but re-opening is cheap for a git handle and expensive for a SCIP index. Three options: a `Sync` bound plus `Arc`, a `handle()` returning a cheap Send clone (what `docs/plan/shage.html` sketches), or open-options re-opened per worker | prompt 04 review of PR #3 |
-| `index/scip` | test the four invariants `NullBackend` satisfies vacuously: `SymbolRef::path` repository-relative with no `..`, `Blast::packages` sorted and deduplicated, `history` most-recent-first, and `limit` a hard cap | same |
+| `index/classify` | receiver typing in the heuristic pass. `x.bar()` is `Candidates` until something can say what `x` is, and it is the single change that would move `a-inherent-same-name`, `b-generic-bound` and `c-trait-object` off the floor | `crates/shage-index/src/heuristic/AGENTS.md` |
+| whichever branch first has a backend carrying commit data | test the two halves of the history contract that are still vacuous: most-recent-first ordering, and `limit` as a hard cap. Neither existing backend can produce a single `CommitRef` to order, so both are asserted by review today | `crates/shage-index/tests/backends.rs` |
+| `follow/blast` | add `is_test` to `Blast` for ranking's test de-weighting. `exported` is already on `Blast`; neither belongs on `SymbolRef`, which stays a location | `crates/shage-index/AGENTS.md` |
+| `follow/blast` | give `Blast::exported` a source. Both backends report `false` — SCIP carries no visibility and a syntactic pass sees `pub` without knowing whether the module around it is reachable — and false means "not known to be exported", which under-ranks rather than over-ranks | `crates/shage-index/src/scip/AGENTS.md` |
+| not a branch — CI | repoint `ci.yml` for the fork: it still runs bare `cargo check`/`clippy`/`test` against `default-members`, so nothing outside `shage-core` is built there. `--workspace` everywhere, plus an oracle job with `rustup component add rust-analyzer` | `xtask/AGENTS.md` |
+| not a branch — CI | unpin the Format and Clippy toolchain once `crates/shage-core/src/vcs/jj/mod.rs:181` no longer trips `clippy::chunks_exact_to_as_chunks`, whether upstream fixes it or a `docs/SEAMS.md` row lets us. A pin that outlives its reason is a fork stuck on an old lint set | `.github/workflows/ci.yml` |
+
+Discharged by `index/fixtures-oracle`: `crates/shage-index/src/backends/AGENTS.md`, backend
+detection, `CallSite::text`, and the four invariants `NullBackend` satisfied vacuously (two
+of them are now real tests; the other two are the history row above, which is honest about
+still having nothing to assert against). Also the clippy 1.98 breakage, by pinning the two
+lint jobs rather than by editing vendored code — which is why the row above is about
+removing the pin, not about the lint.
