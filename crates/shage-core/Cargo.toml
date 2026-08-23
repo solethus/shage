@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 description = "Review AI-generated diffs like a GitHub pull request, right from your terminal."
 license = "MIT"
-repository = "https://github.com/agavra/tuicr"
-homepage = "https://github.com/agavra/tuicr"
+# shage: the fork, not upstream. `package.repository` is what the vendored self-updater
+# resolves release downloads against (src/update/install/source.rs), so leaving it on
+# agavra/tuicr means `shage update` sees upstream 0.23.x > our 0.1.0 and swaps the running
+# shage binary for upstream's. Pointing it here makes that path 404 instead. See docs/SEAMS.md.
+repository = "https://github.com/solethus/shage"
+homepage = "https://github.com/solethus/shage"
 readme = "README.md"
 keywords = ["tui", "git", "code-review", "diff", "cli"]
 categories = ["command-line-utilities", "development-tools"]
