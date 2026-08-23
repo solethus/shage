@@ -34,8 +34,22 @@ pub fn detect(root: &Path) -> Box<dyn IndexBackend> {
     let index = scip_index_path(root);
     if index.is_file() {
         let commit = ScipBackend::sidecar_commit(&index);
-        if let Ok(backend) = ScipBackend::open(&index, root, commit) {
-            return Box::new(backend);
+        match ScipBackend::open(&index, root, commit) {
+            // An index that parses but covers nothing is not an index. Zero bytes are a
+            // well-formed protobuf with every field defaulted, so an indexer killed
+            // mid-write leaves a file that opens cleanly and then answers empty for every
+            // query — worse than the tier below it, which works. Falling through is the
+            // only reading of that file that is not a confident zero.
+            Ok(backend) if backend.covers_anything() => return Box::new(backend),
+            Ok(_) => eprintln!(
+                "shage: {} holds no documents — ignoring it and parsing the source instead. \
+                 Re-run the indexer if that is not what you expected.",
+                index.display()
+            ),
+            // Never a dialog, but never silence either: `Corrupt` means the bytes were read
+            // and not understood, which is a fact about the user's index rather than about
+            // this tier, and swallowing it makes a broken index look like a weak resolver.
+            Err(err) => eprintln!("shage: cannot read {}: {err}", index.display()),
         }
     }
     if let Ok(backend) = HeuristicBackend::open(root) {

@@ -38,6 +38,7 @@ impl HeuristicBackend {
 
         let files = rust_files(root);
         let mut sources = Vec::with_capacity(files.len());
+        let mut parsed = Vec::with_capacity(files.len());
         let mut defs = Definitions::default();
         for path in files {
             let Ok(source) = fs::read_to_string(root.join(&path)) else {
@@ -47,6 +48,7 @@ impl HeuristicBackend {
                 continue;
             };
             defs.absorb(&path, tree.root_node(), &source);
+            parsed.push(path.clone());
             sources.push((path, source, tree));
         }
 
@@ -58,6 +60,11 @@ impl HeuristicBackend {
         }
 
         let mut graph = CallGraph::default();
+        // Coverage is every file that parsed, not every file that defined something: a
+        // types-only module was read and understood and must not read as unindexed.
+        for path in parsed {
+            graph.observe(path);
+        }
         defs.seed(&mut graph);
         for call in calls {
             graph.call(call);
@@ -137,6 +144,10 @@ fn module_of(symbol: &SymbolRef) -> String {
 /// `target/` and `.git/` are skipped: one holds build output including generated sources
 /// that are nobody's code, the other holds no code at all. Sorted so two runs over the same
 /// tree build the same graph, since ties in `by_name` are resolved by insertion order.
+///
+/// Symlinks are never followed. `entry.file_type()` reports the link itself where
+/// `Path::is_dir` reports its target, and a link to an ancestor — `ln -s .. src/up` — makes
+/// the second walk forever. This runs on the startup path, where a hang reads as a crash.
 fn rust_files(root: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -145,13 +156,17 @@ fn rust_files(root: &Path) -> Vec<PathBuf> {
             continue;
         };
         for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
             let path = entry.path();
             let name = entry.file_name();
-            if path.is_dir() {
+            if kind.is_dir() {
                 if !matches!(name.to_str(), Some("target" | ".git")) {
                     stack.push(path);
                 }
-            } else if path.extension().is_some_and(|ext| ext == "rs")
+            } else if kind.is_file()
+                && path.extension().is_some_and(|ext| ext == "rs")
                 && let Ok(relative) = path.strip_prefix(root)
             {
                 found.push(relative.to_path_buf());

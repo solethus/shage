@@ -8,7 +8,7 @@
 //! bounded walk that drifts.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::contract::{
     Blast, CallSite, ChangedFile, DiffSymbols, FileCoverage, FileState, SymId, SymbolRef,
@@ -21,9 +21,18 @@ pub struct CallGraph {
     definitions: HashMap<SymId, SymbolRef>,
     callables: SymbolTable,
     calls: Vec<CallSite>,
+    seen: BTreeSet<PathBuf>,
 }
 
 impl CallGraph {
+    /// Records that a backend read this file, whether or not it found anything in it.
+    ///
+    /// Coverage is not the same question as "does this file define a callable". A file of
+    /// nothing but structs and constants was read and understood; saying the index never saw
+    /// it sends a reviewer off to install an indexer they already have.
+    pub fn observe(&mut self, path: impl Into<PathBuf>) {
+        self.seen.insert(path.into());
+    }
     /// Records a definition. The last one under a `SymId` loses: a symbol is defined once,
     /// and a second definition of the same identity means the backend built the identity
     /// wrong, which should not silently replace a good answer.
@@ -69,8 +78,18 @@ impl CallGraph {
 
     /// Whether this graph has anything to say about a file. The difference between "nothing
     /// here calls anything" and "this file was never looked at".
+    ///
+    /// Answered from the files the backend read, not from the files that hold a callable:
+    /// a types-only or consts-only file is covered and simply has no symbols, which is the
+    /// opposite conclusion from [`FileCoverage::Missing`].
     pub fn covers(&self, path: &Path) -> bool {
-        self.callables.paths().any(|known| known == path)
+        self.seen.contains(path)
+    }
+
+    /// Whether the backend read anything at all. An index that parses and covers no file is
+    /// indistinguishable from having no index, and [`crate::backends::detect`] treats it so.
+    pub fn covers_anything(&self) -> bool {
+        !self.seen.is_empty()
     }
 
     /// The sites whose resolved target is `sym`. A [`crate::contract::Resolution::Candidates`]

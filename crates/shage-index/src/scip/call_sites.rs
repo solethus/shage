@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use scip::types::Document;
 
 use super::definitions::Callable;
-use super::occurrences::{decode_range, is_definition};
+use super::occurrences::{is_definition, name_span};
 use crate::call_graph::CallGraph;
 use crate::contract::{CallSite, Resolution, SymId};
 
@@ -41,7 +41,7 @@ pub fn absorb(
         let Some(target) = graph.definition(&SymId::new(&occurrence.symbol)).cloned() else {
             continue; // declared callable but defined elsewhere: a dependency, not an edge
         };
-        let Some(site) = decode_range(&occurrence.range) else {
+        let Some(site) = name_span(occurrence) else {
             continue;
         };
         let Some(from) = graph.callables().enclosing(&path, site.first_line).cloned() else {

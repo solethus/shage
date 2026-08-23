@@ -100,12 +100,18 @@ pub fn whole_tree(root: &std::path::Path) -> Vec<ChangedFile> {
             continue;
         };
         for entry in entries.flatten() {
+            // `file_type()` rather than `Path::is_dir`: the latter follows symlinks, and a
+            // link to an ancestor walks forever. Same reason as `heuristic::rust_files`,
+            // whose file set this one has to match.
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
             let path = entry.path();
-            if path.is_dir() {
+            if kind.is_dir() {
                 if !matches!(entry.file_name().to_str(), Some("target" | ".git")) {
                     stack.push(path);
                 }
-            } else if path.extension().is_some_and(|ext| ext == "rs") {
+            } else if kind.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
                 let lines = std::fs::read_to_string(&path)
                     .map(|text| text.lines().count().max(1) as u32)
                     .unwrap_or(1);

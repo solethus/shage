@@ -64,6 +64,24 @@ pub fn run(root: &Path, bless: bool) -> ExitCode {
     print_disagreements(&reports);
 
     if bless {
+        // Say what is being lowered before lowering it. `--bless` is how a deliberate drop
+        // gets recorded, but without this a deliberate drop and an accidental one print the
+        // same line, and the only remaining guard is someone reading the numbers in the
+        // `oracle.baseline` diff.
+        let lowered: Vec<String> = measured
+            .iter()
+            .filter_map(|(name, score)| {
+                floor
+                    .regression(name, score)
+                    .map(|why| format!("  {name}: {why}"))
+            })
+            .collect();
+        if !lowered.is_empty() {
+            println!("\nlowering the floor for {} fixture(s):", lowered.len());
+            for line in &lowered {
+                println!("{line}");
+            }
+        }
         return match baseline::bless(root, &measured) {
             Ok(()) => {
                 println!("\nblessed {} rows into {}", measured.len(), baseline::PATH);

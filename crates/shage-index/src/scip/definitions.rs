@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use scip::symbol::is_local_symbol;
 use scip::types::{Document, Index, SymbolInformation, symbol_information::Kind};
 
-use super::occurrences::{decode_range, is_definition};
+use super::occurrences::{body_span, is_definition, name_span};
 use crate::call_graph::CallGraph;
 use crate::contract::{SymId, SymbolRef};
 use crate::enclosing::DefRange;
@@ -74,11 +74,15 @@ fn callable_name(info: &SymbolInformation) -> Option<(String, String)> {
 /// table keyed by symbol string would have them collide across files.
 pub fn absorb(graph: &mut CallGraph, document: &Document, callable: &Callable) {
     let path = PathBuf::from(&document.relative_path);
+    // The index holds this document, so the index covers this file — whether or not the
+    // file turns out to define a single callable.
+    graph.observe(path.clone());
+    let mut missing_body = 0usize;
     for occurrence in &document.occurrences {
         if !is_definition(occurrence.symbol_roles) || is_local_symbol(&occurrence.symbol) {
             continue;
         }
-        let Some(name) = decode_range(&occurrence.range) else {
+        let Some(name) = name_span(occurrence) else {
             continue;
         };
         let symbol = SymbolRef {
@@ -88,16 +92,33 @@ pub fn absorb(graph: &mut CallGraph, document: &Document, callable: &Callable) {
             line: name.first_line,
         };
         if callable.contains(&occurrence.symbol) {
-            // `enclosing_range` covers the whole definition, signature and body. The name
+            // The enclosing range covers the whole definition, signature and body. The name
             // range alone would leave every call in the body attributed to whatever
-            // encloses the function instead of to the function.
-            let body = decode_range(&occurrence.enclosing_range).unwrap_or(name);
-            graph.span(DefRange {
-                sym: symbol.clone(),
-                first_line: body.first_line,
-                last_line: body.last_line,
-            });
+            // encloses the function instead of to the function — which is why an absent one
+            // is skipped rather than collapsed onto the name line. A producer that omits it
+            // (scip-go, older scip-typescript) would otherwise yield a graph of definitions
+            // with no edges at all, stamped as if the index had answered.
+            if let Some(body) = body_span(occurrence) {
+                graph.span(DefRange {
+                    sym: symbol.clone(),
+                    first_line: body.first_line,
+                    last_line: body.last_line,
+                });
+            } else {
+                missing_body += 1;
+            }
         }
         graph.define(symbol);
+    }
+    if missing_body > 0 {
+        // Said out loud once per document rather than swallowed: with no enclosing range
+        // there is no span to attribute a call to, so this file contributes definitions and
+        // no edges, and an empty `callers` panel would otherwise look like a fact about the
+        // code instead of a gap in the index.
+        eprintln!(
+            "shage: {} carries no enclosing range for {missing_body} callable definition(s) — \
+             calls written inside them cannot be attributed",
+            path.display()
+        );
     }
 }

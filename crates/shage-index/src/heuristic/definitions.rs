@@ -84,12 +84,25 @@ impl Definitions {
                 if let Some(name) = field_text(node, "name", source) {
                     self.record(path, node, name, scope.owner.clone());
                 }
+                // A body is not the `impl` that contains it. Descending with the owner still
+                // set would record a `fn` nested inside a method as a method of that type —
+                // `Foo::parse` resolving to a private helper inside `Foo::bar` that cannot be
+                // named that way, and every such helper joining `methods_named` as a
+                // candidate for unrelated `x.parse()` calls.
+                return self.descend(path, node, source, &mut Scope::default());
             }
             "impl_item" => {
                 // `impl Task for One` has both fields; the owner is the type, because that
                 // is what `One::run()` is written against.
+                //
+                // `bare_type` because the field carries the whole type expression: an
+                // `impl<T> Wrapper<T>` keys on `Wrapper<T>` while every call site writes
+                // `Wrapper::make()`, so the one branch that uses written-down receiver
+                // evidence would never match a generic or referenced impl.
                 let owner = field_text(node, "type", source)
                     .or_else(|| field_text(node, "trait", source))
+                    .map(bare_type)
+                    .filter(|owner| !owner.is_empty())
                     .map(str::to_owned);
                 return self.descend(path, node, source, &mut Scope { owner });
             }
@@ -168,6 +181,19 @@ impl Definitions {
                         entry.insert(alias.to_owned(), real.to_owned());
                     }
                 }
+                // `use a::b::{c, d};` and `use a::b::*;` bind only their leaves. Both nodes
+                // carry the module prefix `a::b` as a `path` child, so descending blindly
+                // would bind `b` too — a name nothing imported, checked before the local
+                // scope in `in_scope`, and therefore able to turn `b()` into a confident
+                // edge to an unrelated same-named function. Only the list is followed; a
+                // wildcard brings in names this pass cannot enumerate, so it binds nothing.
+                "scoped_use_list" => {
+                    if let Some(list) = current.child_by_field_name("list") {
+                        let mut inner = list.walk();
+                        stack.extend(list.named_children(&mut inner));
+                    }
+                }
+                "use_wildcard" => {}
                 "scoped_identifier" | "identifier" => {
                     if let Some(leaf) = last_segment(node_text(current, source)) {
                         entry.insert(leaf.to_owned(), leaf.to_owned());
@@ -203,4 +229,21 @@ fn last_segment(path: &str) -> Option<&str> {
         .next()
         .map(str::trim)
         .filter(|s| !s.is_empty())
+}
+
+/// The bare name an `impl` type is written under at a call site.
+///
+/// `&mut Wrapper<'a, T>` is written `Wrapper::make()`, so references, lifetimes and generic
+/// arguments are stripped and the trailing path segment is what remains. Nothing here
+/// resolves anything — it only undoes the syntax between the type and the name a caller
+/// spells, which is why it is a trim rather than a parse.
+fn bare_type(written: &str) -> &str {
+    let name = written
+        .trim_start_matches(['&', '*'])
+        .trim_start()
+        .trim_start_matches("mut ")
+        .trim_start_matches("const ")
+        .trim_start();
+    let name = name.split(['<', '(', '[']).next().unwrap_or(name).trim();
+    last_segment(name).unwrap_or("")
 }

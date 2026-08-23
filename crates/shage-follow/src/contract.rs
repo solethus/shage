@@ -26,9 +26,16 @@ impl FollowPanel {
     /// is not an empty version of "index at a1b2c3d", it is a different fact. Commits are
     /// named rather than counted: on a stack of pull requests a distance is either
     /// expensive to compute or simply false.
+    ///
+    /// A backend that reads the working tree has no indexed commit and is not stale against
+    /// one, so it reports the tree it read rather than "no index". Collapsing the two would
+    /// print "no index" above a list of real rows, and would make a heuristic answer with
+    /// genuinely zero callers render identically to one from a backend with nothing behind
+    /// it — the distinction the whole stamp exists to keep.
     pub fn freshness(&self) -> String {
         match (&self.stamp.indexed_commit, &self.stamp.repo_commit) {
-            (None, _) => "no index".to_owned(),
+            (None, None) => "no index".to_owned(),
+            (None, Some(repo)) => format!("no index, tree at {}", short(repo)),
             (Some(indexed), Some(repo)) if indexed != repo => {
                 format!("index at {}, tree at {}", short(indexed), short(repo))
             }

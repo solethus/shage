@@ -69,6 +69,15 @@ impl ScipBackend {
         self.graph.calls()
     }
 
+    /// Whether the index covers any file at all.
+    ///
+    /// Zero bytes decode to a well-formed index of nothing, so "it opened" is not evidence
+    /// that there is an index behind it. [`crate::backends::detect`] asks this before
+    /// preferring this tier over one that reads the source.
+    pub fn covers_anything(&self) -> bool {
+        self.graph.covers_anything()
+    }
+
     fn answer<T>(&self, value: T) -> Stamped<T> {
         Stamped::new(self.stamp.clone(), value)
     }

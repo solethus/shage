@@ -178,3 +178,151 @@ fn detection_always_returns_a_working_backend() {
     );
     let _ = fs::remove_dir_all(&empty);
 }
+
+/// `use a::b::{c};` binds `c`, never `b`.
+///
+/// The phantom binding was reachable from `in_scope`, which consults imports before local
+/// scope, so a call to the *module* name resolved — confidently — to an unrelated function
+/// that happened to share it.
+#[test]
+fn a_braced_use_does_not_import_its_module_prefix() {
+    let dir = std::env::temp_dir().join(format!("shage-braced-use-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("src")).expect("create sandbox");
+    fs::write(
+        dir.join("src/other.rs"),
+        "pub fn helper() -> u32 {\n    1\n}\n",
+    )
+    .expect("write other");
+    fs::write(
+        dir.join("src/lib.rs"),
+        "mod helper;\nmod other;\n\nuse helper::{thing};\n\n\
+         pub fn caller() -> u32 {\n    helper()\n}\n",
+    )
+    .expect("write lib");
+    fs::write(
+        dir.join("src/helper.rs"),
+        "pub fn thing() -> u32 {\n    2\n}\n",
+    )
+    .expect("write helper");
+
+    let backend = HeuristicBackend::open(&dir).expect("tree-sitter is available");
+    let call = backend
+        .calls()
+        .iter()
+        .find(|call| call.text == "helper")
+        .expect("the sandbox calls helper()");
+    assert!(
+        !matches!(call.target, shage_index::contract::Resolution::Heuristic(_)),
+        "`helper` is a module here, not an import — got {:?}",
+        call.target
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A `fn` nested in a method body is not a method of the surrounding type.
+#[test]
+fn a_nested_fn_is_not_an_associated_function() {
+    let dir = std::env::temp_dir().join(format!("shage-nested-fn-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("src")).expect("create sandbox");
+    fs::write(
+        dir.join("src/lib.rs"),
+        "pub struct Foo;\n\nimpl Foo {\n    pub fn bar(&self) -> u32 {\n        \
+         fn parse(s: &str) -> u32 {\n            s.len() as u32\n        }\n        \
+         parse(\"x\")\n    }\n}\n\n\
+         pub fn elsewhere() -> u32 {\n    Foo::parse(\"y\")\n}\n",
+    )
+    .expect("write lib");
+
+    let backend = HeuristicBackend::open(&dir).expect("tree-sitter is available");
+    let call = backend
+        .calls()
+        .iter()
+        .find(|call| call.text == "Foo::parse")
+        .expect("the sandbox writes Foo::parse");
+    assert!(
+        !matches!(call.target, shage_index::contract::Resolution::Heuristic(_)),
+        "Foo::parse names nothing — a helper inside Foo::bar is not a method, got {:?}",
+        call.target
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// An inherent method on a generic type is reachable by the name a call site writes.
+#[test]
+fn a_generic_impl_keys_on_the_bare_type_name() {
+    let dir = std::env::temp_dir().join(format!("shage-generic-impl-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("src")).expect("create sandbox");
+    fs::write(
+        dir.join("src/lib.rs"),
+        "pub struct Wrapper<T>(T);\n\n\
+         impl<T> Wrapper<T> {\n    pub fn make(v: T) -> Self {\n        Wrapper(v)\n    }\n}\n\n\
+         pub fn other_make() -> u32 {\n    1\n}\n\n\
+         pub fn build() -> Wrapper<u32> {\n    Wrapper::make(1)\n}\n",
+    )
+    .expect("write lib");
+
+    let backend = HeuristicBackend::open(&dir).expect("tree-sitter is available");
+    let call = backend
+        .calls()
+        .iter()
+        .find(|call| call.text == "Wrapper::make")
+        .expect("the sandbox writes Wrapper::make");
+    let shage_index::contract::Resolution::Heuristic(target) = &call.target else {
+        panic!("the receiver type is written down — expected Heuristic, got {call:?}");
+    };
+    assert_eq!(target.display, "make");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A file with no callables is covered, not missing: it was read and understood.
+#[test]
+fn a_file_without_callables_is_covered() {
+    let dir = std::env::temp_dir().join(format!("shage-types-only-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("src")).expect("create sandbox");
+    fs::write(dir.join("src/lib.rs"), TREE).expect("write lib");
+    fs::write(
+        dir.join("src/types.rs"),
+        "pub struct Thing {\n    pub n: u32,\n}\n",
+    )
+    .expect("write types");
+
+    let backend = HeuristicBackend::open(&dir).expect("tree-sitter is available");
+    let answer = backend
+        .symbols_in_diff(&[shage_index::contract::ChangedFile {
+            path: PathBuf::from("src/types.rs"),
+            new_lines: vec![1..=3],
+        }])
+        .expect("the heuristic backend always answers");
+    assert!(
+        answer.value.uncovered.is_empty(),
+        "a types-only file was read, so it is not missing from the index: {:?}",
+        answer.value.uncovered
+    );
+    assert!(answer.value.symbols.is_empty(), "and it defines no symbols");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A symlink to an ancestor must not make the tree walk recurse forever.
+///
+/// `detect()` runs on the startup path, so this is the difference between opening the TUI
+/// and watching it consume memory until it is killed.
+#[cfg(unix)]
+#[test]
+fn a_symlink_loop_does_not_hang_the_walk() {
+    let dir = std::env::temp_dir().join(format!("shage-symlink-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("src")).expect("create sandbox");
+    fs::write(dir.join("src/lib.rs"), TREE).expect("write sandbox");
+    std::os::unix::fs::symlink("..", dir.join("src/up")).expect("create the loop");
+
+    let backend = HeuristicBackend::open(&dir).expect("tree-sitter is available");
+    assert!(
+        !backend.calls().is_empty(),
+        "the real file is still indexed; only the loop is skipped"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

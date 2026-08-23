@@ -17,4 +17,4 @@ mod occurrences;
 
 pub use backend::{COMMIT_SIDECAR, ScipBackend};
 pub use load::load;
-pub use occurrences::{Span, decode_range, is_definition};
+pub use occurrences::{Span, body_span, decode_range, is_definition, name_span};

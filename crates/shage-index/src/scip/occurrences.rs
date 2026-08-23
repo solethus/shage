@@ -1,6 +1,6 @@
 //! Decoding an occurrence: where it is, and what role it plays.
 
-use scip::types::SymbolRole;
+use scip::types::{MultiLineRange, Occurrence, SingleLineRange, SymbolRole, occurrence};
 
 /// The lines an occurrence covers, 1-based and inclusive.
 ///
@@ -34,6 +34,56 @@ pub fn decode_range(range: &[i32]) -> Option<Span> {
     Some(Span {
         first_line: first as u32 + 1,
         last_line: last as u32 + 1,
+    })
+}
+
+/// Where the occurrence's name is written, from whichever field the producer populated.
+///
+/// SCIP deprecated the flat `range` in favour of the `typed_range` oneof, and its own schema
+/// says the typed form takes precedence. rust-analyzer still writes the flat one; scip-go
+/// and newer scip-typescript write the typed one. Reading only the deprecated field means a
+/// perfectly good index from another producer decodes to nothing at all — and because
+/// `ScipBackend::open` still succeeds, that arrives as a confident zero rather than an error.
+pub fn name_span(occurrence: &Occurrence) -> Option<Span> {
+    // The oneof is `#[non_exhaustive]`: a variant added by a later SCIP falls through to the
+    // deprecated flat field rather than being read as "no range", because a producer that
+    // writes both is common and a silent `None` here drops the occurrence entirely.
+    match &occurrence.typed_range {
+        Some(occurrence::Typed_range::SingleLineRange(range)) => single_line(range),
+        Some(occurrence::Typed_range::MultiLineRange(range)) => multi_line(range),
+        _ => decode_range(&occurrence.range),
+    }
+}
+
+/// The lines the whole definition spans — signature and body — or `None` when the producer
+/// left it out.
+///
+/// `None` is not the same as "one line". Collapsing an absent enclosing range onto the name
+/// line leaves every call in the body attributed to nothing, so callers record the gap
+/// instead of inventing a span.
+pub fn body_span(occurrence: &Occurrence) -> Option<Span> {
+    match &occurrence.typed_enclosing_range {
+        Some(occurrence::Typed_enclosing_range::SingleLineEnclosingRange(range)) => {
+            single_line(range)
+        }
+        Some(occurrence::Typed_enclosing_range::MultiLineEnclosingRange(range)) => {
+            multi_line(range)
+        }
+        _ => decode_range(&occurrence.enclosing_range),
+    }
+}
+
+fn single_line(range: &SingleLineRange) -> Option<Span> {
+    (range.line >= 0).then(|| Span {
+        first_line: range.line as u32 + 1,
+        last_line: range.line as u32 + 1,
+    })
+}
+
+fn multi_line(range: &MultiLineRange) -> Option<Span> {
+    (range.start_line >= 0 && range.end_line >= range.start_line).then(|| Span {
+        first_line: range.start_line as u32 + 1,
+        last_line: range.end_line as u32 + 1,
     })
 }
 
@@ -76,6 +126,51 @@ mod tests {
     fn negative_and_inverted_ranges_are_none() {
         assert_eq!(decode_range(&[-1, 0, 4]), None);
         assert_eq!(decode_range(&[9, 0, 2, 1]), None, "end before start");
+    }
+
+    #[test]
+    fn typed_range_wins_over_the_deprecated_one() {
+        let mut occurrence = Occurrence::new();
+        occurrence.range = vec![0, 0, 1];
+        occurrence.typed_range = Some(occurrence::Typed_range::SingleLineRange(SingleLineRange {
+            line: 41,
+            start_character: 4,
+            end_character: 9,
+            ..Default::default()
+        }));
+        let span = name_span(&occurrence).expect("a typed range is a range");
+        assert_eq!((span.first_line, span.last_line), (42, 42));
+    }
+
+    #[test]
+    fn a_typed_only_index_still_decodes() {
+        // The failure this guards: reading only the deprecated field makes an index from
+        // scip-go or newer scip-typescript decode to nothing while still opening cleanly.
+        let mut occurrence = Occurrence::new();
+        occurrence.typed_enclosing_range = Some(
+            occurrence::Typed_enclosing_range::MultiLineEnclosingRange(MultiLineRange {
+                start_line: 6,
+                start_character: 0,
+                end_line: 9,
+                end_character: 1,
+                ..Default::default()
+            }),
+        );
+        let span = body_span(&occurrence).expect("a typed enclosing range is a range");
+        assert_eq!((span.first_line, span.last_line), (7, 10));
+        assert_eq!(name_span(&occurrence), None, "no range of any kind is None");
+    }
+
+    #[test]
+    fn an_absent_enclosing_range_is_none_not_the_name_line() {
+        let mut occurrence = Occurrence::new();
+        occurrence.range = vec![7, 4, 9];
+        assert!(name_span(&occurrence).is_some());
+        assert_eq!(
+            body_span(&occurrence),
+            None,
+            "an absent body must not collapse onto the name line"
+        );
     }
 
     #[test]

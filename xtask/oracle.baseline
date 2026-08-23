@@ -4,11 +4,11 @@
 # and demanding parity is how a test gets deleted rather than fixed. The oracle fails
 # when a measurement drops below its row, so these numbers only ever go up.
 #
-# fixture              precision  recall
-a-inherent-same-name        1.00    0.50
-b-generic-bound             1.00    0.67
-c-trait-object              1.00    0.67
-d-reexport-chain            1.00    1.00
-e-aliased-import            1.00    1.00
-f-macro-generated           1.00    0.00
-g-renamed-symbol            1.00    1.00
+# fixture              precision  recall  edges
+a-inherent-same-name        1.00    0.50      4
+b-generic-bound             1.00    0.67      3
+c-trait-object              1.00    0.67      3
+d-reexport-chain            1.00    1.00      1
+e-aliased-import            1.00    1.00      1
+f-macro-generated           1.00    0.00      1
+g-renamed-symbol            1.00    1.00      1

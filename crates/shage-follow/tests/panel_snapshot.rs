@@ -192,3 +192,26 @@ fn a_row_too_wide_is_marked_shortened_and_keeps_its_evidence() {
         narrow[4]
     );
 }
+
+/// The heuristic backend has no indexed commit by design, and that is not "no index".
+///
+/// It re-reads the working tree every open, so there is nothing to be stale against — but
+/// the tree it read is a fact worth printing, and printing "no index" instead makes a real
+/// heuristic answer indistinguishable from a backend with nothing behind it.
+#[test]
+fn a_working_tree_backend_reports_its_tree_not_no_index() {
+    let mut panel = panel();
+    panel.stamp = IndexStamp {
+        indexed_commit: None,
+        repo_commit: Some("9f8e7d6c5b4a".to_owned()),
+        overlay: false,
+    };
+    assert_eq!(panel.freshness(), "no index, tree at 9f8e7d6");
+
+    panel.stamp = IndexStamp::none();
+    assert_eq!(
+        panel.freshness(),
+        "no index",
+        "nothing read and nothing to read stays the bare sentence"
+    );
+}
