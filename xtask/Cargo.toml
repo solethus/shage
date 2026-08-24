@@ -3,3 +3,9 @@ name = "xtask"
 version = "0.1.0"
 edition = "2024"
 publish = false
+
+[dependencies]
+# The oracle loads `.scip` through the slice that owns that format, and runs the pass under
+# test through the same trait. It never parses a protobuf itself: a second reader is a
+# second thing to be wrong, and the one under test would be grading itself.
+shage-index = { path = "../crates/shage-index" }

@@ -1,9 +1,9 @@
 # shage-index — the crate contract
 
-The slice doc for `src/contract/` and `src/backends/null.rs`. Every other slice in this
-crate (`scip/`, `classify/`, `callgraph/`, `freshness/`, `resolve/`) gets its own
-AGENTS.md; `backends/` gets one when the scip backend lands, per the carry-over list in
-`docs/prompts/README.md`.
+The crate contract: `src/contract/`, and the rules every slice under it upholds. Each slice
+carries its own AGENTS.md — `src/enclosing/`, `src/scip/`, `src/heuristic/`, `src/backends/`
+today, and `classify/`, `callgraph/`, `freshness/` and `resolve/` as they land. Read this
+note plus the one slice you are changing; the whole crate is not the unit.
 
 ## Purpose
 
@@ -13,9 +13,14 @@ that produced it; this slice is the only surface other crates may touch, holding
 `Send` types that cross an mpsc channel, the `IndexBackend` trait, and the backend that
 always answers "there is no index".
 
-This slice knows nothing about diffs, patches, review sessions, keybindings, ratatui,
-crossterm, `shage-core`, SCIP, protobuf, tree-sitter, or any on-disk index format — it
-names no file format and no programming language, and it performs no I/O.
+`src/contract/` knows nothing about diffs, patches, review sessions, keybindings, ratatui,
+crossterm, `shage-core`, SCIP, protobuf, tree-sitter, or any on-disk index format — it names
+no file format and no programming language, and it performs no I/O. Format and language
+knowledge is quarantined in the backend slices, one format or language each, and every one
+of them speaks only the types below.
+
+The crate as a whole knows nothing about the TUI, and that is the rule with teeth: see
+invariant 8.
 
 ## The shape of an answer
 
@@ -128,6 +133,10 @@ pub struct CallSite {
     /// Where the call is written — not where `from` is defined.
     pub path: PathBuf,
     pub line: u32,
+    /// The call expression as written, e.g. "l.Allow". Evidence for the badge: a
+    /// `Candidates` row that cannot show *what* was ambiguous is asking the reviewer
+    /// to trust a guess.
+    pub text: String,
     pub target: Resolution,
 }
 
@@ -321,21 +330,32 @@ divergent) later without touching this shape. Until then the stamp states facts.
    `Box<dyn IndexBackend>` compiles, and no contract type borrows.
 7. **A backend that cannot answer says `Unsupported`, never empty.** No trait method has a
    default body, so the compiler catches the omission before a reviewer does.
-8. **`shage-index` depends on `thiserror` and nothing else.** `cargo tree -p shage-index`
-   lists no other crate, and in particular neither `shage-core` nor any TUI crate.
+8. **`shage-index` never depends on `shage-core` or any TUI crate.** It takes exactly four
+   dependencies, each earning its place by being the thing it wraps: `thiserror` (which
+   `shage-core` already pins, so no new crate entered the lockfile), `scip` and its
+   `protobuf` runtime — the encoding is the protocol's, and a hand-rolled reader would drift
+   from it silently — and `tree-sitter` with `tree-sitter-rust` for the pass that runs
+   without a compiler. `proptest` is a dev-dependency. `cargo tree -p shage-index --edges
+   normal` lists those and their transitive deps, and no `ratatui`, `crossterm` or
+   `shage-core`. The direction is the invariant: `shage-follow` depends on this crate, and
+   nothing here depends back.
 
 ## File plan
 
-| file | lines | contents |
-|---|---|---|
-| `AGENTS.md` | 399 | this note |
-| `src/contract/mod.rs` | 376 | every type above, `IndexStamp::none()`, `Stamped::new()`, `Resolution::{candidates, confidence, one}`, `CandidateSet::as_slice()`. No I/O, no `#[cfg(test)]` — the tests live outside so they exercise the surface the way a consumer does |
-| `src/contract/backend.rs` | 54 | the `IndexBackend` trait alone, re-exported by `mod.rs` so the public path stays `contract::IndexBackend` |
-| `src/backends/mod.rs` | 8 | `pub mod null;` and the re-export. Backend detection arrives with the scip slice |
-| `src/backends/null.rs` | 151 | `NullBackend`, its seven method bodies, and its unit tests |
-| `src/lib.rs` | 9 | `pub mod backends;`, `pub mod contract;`, and `#![deny(missing_docs)]` |
-| `tests/contract.rs` | 195 | the invariants that must hold from outside the crate |
-| `Cargo.toml` | 7 | `thiserror = "2.0"`, the version shage-core already pins, so no new crate enters the lockfile — it gains only the dependency edge |
+| file | contents |
+|---|---|
+| `AGENTS.md` | this note |
+| `src/contract/mod.rs` | every type above, `IndexStamp::none()`, `Stamped::new()`, `Resolution::{candidates, confidence, one}`, `CandidateSet::as_slice()`. No I/O, no `#[cfg(test)]` — the tests live outside so they exercise the surface the way a consumer does |
+| `src/contract/backend.rs` | the `IndexBackend` trait alone, re-exported by `mod.rs` so the public path stays `contract::IndexBackend` |
+| `src/call_graph.rs` | definitions, edges, and the five trait methods both real backends answer identically. Written once rather than twice with a bounded walk that drifts |
+| `src/enclosing/` | which definition encloses a line. Shared, because both backends need it and neither owns it |
+| `src/scip/` | the SCIP reader. `load`, `occurrences`, `definitions`, `call_sites`, `backend` |
+| `src/heuristic/` | the tree-sitter pass. `definitions`, `call_sites`, `backend` |
+| `src/backends/` | `detect()`, and `null.rs` |
+| `src/lib.rs` | the module list and `#![deny(missing_docs)]` |
+| `tests/contract.rs` | the invariants that must hold from outside the crate |
+| `tests/attribution.rs` | the line-attribution property, over generated ranges |
+| `tests/backends.rs` | the invariants `NullBackend` could only satisfy vacuously, run against a backend that answers |
 
 No file over 400 lines, none named helpers, utils, common or misc. `contract.rs` reached the
 cap and was split as planned: the trait moved to `contract/backend.rs` behind a
@@ -344,7 +364,9 @@ above is hand-maintained and rots on any edit — treat it as a sketch, not a fa
 
 ## Test plan
 
-No fixtures: nothing here reads a repository. The first arrive with `index/fixtures-oracle`.
+`src/contract/` reads no repository, so its tests need no fixtures. The backend slices do,
+and those fixtures are generated by `cargo xtask fixtures` and never committed — see
+`xtask/AGENTS.md`.
 
 | invariant | test | where |
 |---|---|---|
@@ -383,9 +405,10 @@ Settled, with the reasoning that is not obvious from the code:
   `blast_radius` per changed symbol anyway, so `Blast` is where both belong; `is_test`
   joins it in that PR. Keeping judgement off `SymbolRef` is the rule that makes this
   obvious.
-- **`CallSite` carries no call text.** `from.display` at `path:line` is a complete panel
-  row. The call expression is evidence for a `Candidates` badge, so it is added by the PR
-  that first renders one — see the carry-overs in `docs/prompts/README.md`.
+- **`CallSite` carries the call text.** Added by `index/fixtures-oracle`, the branch whose
+  panel first renders a `Candidates` badge, exactly as the carry-over required. The
+  heuristic backend produces candidates constantly — every `x.bar()` is one — so the field
+  went in with the badge rather than after it.
 - **No serde.** Export (`shage index callers --json`) is `index/callgraph` and can take
   that dependency then, as its own decision.
 - **No detection.** `NullBackend` is the default but nothing constructs it yet: `detect()`

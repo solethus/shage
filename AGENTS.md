@@ -35,13 +35,15 @@ lives in crates upstream has never heard of.
     cargo run -- <args>                  # the TUI (binary: shage)
     cargo test --workspace
     cargo xtask seams                    # stub today; will diff shage-core against the vendor tag
+    cargo xtask fixtures                 # generate the hazard projects into target/fixtures/
+    cargo xtask oracle                   # grade the heuristic backend against rust-analyzer
     cargo install --path crates/shage-core
 
 ## Where things are
     crates/shage-core     the fork; treat as vendored (package shage, lib crate tuicr)
-    crates/shage-index    the index domain; knows no TUI types         (stub)
-    crates/shage-follow   panel state, ranking, keybindings             (stub)
-    xtask                 seam checking; later fixtures and the oracle
+    crates/shage-index    the index domain; knows no TUI types
+    crates/shage-follow   panel state, ranking, keybindings
+    xtask                 seam checking, fixtures, the differential oracle
     docs/SEAMS.md         every diverging file under crates/shage-core, with a reason
     docs/MAP.md           one screen, directory → purpose
     docs/WORKFLOW.md      stacked-PR workflow, upstream sync procedure, planned stacks
@@ -49,7 +51,8 @@ lives in crates upstream has never heard of.
     docs/plan             dated planning snapshot (interactive HTML) + its corrections
 
 ## Not yet
-No index, no follow panel, no seams wired. The binary is `shage` but still prints
+No seams wired: the index and the panel exist but nothing in the TUI reaches them yet, so
+`cargo run` behaves exactly like upstream. The binary is `shage` but still prints
 "tuicr" in --version and the status bar, uses ~/.config/tuicr, and carries upstream's
 self-updater — do NOT run `shage update` (it would fetch tuicr binaries). The rename
 checklist is later work.

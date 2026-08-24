@@ -18,12 +18,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check
 
+  # shage: the two lint jobs are pinned, and only they. rustfmt and clippy add rules in
+  # every release, so a freshly resolved `stable` turns a branch red with no code change --
+  # clippy 1.98 did exactly that to vendored upstream code that this fork must not edit.
+  # `check` and `test` stay on stable: those break on real language changes, which is
+  # something we want to hear about. Bump both pins together, in the same commit that fixes
+  # whatever the newer lint found.
   fmt:
     name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt
       - run: cargo fmt --all --check
@@ -34,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2

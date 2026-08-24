@@ -180,6 +180,10 @@ pub struct CallSite {
     pub path: PathBuf,
     /// 1-based line of the call, in the same file as `path`.
     pub line: u32,
+    /// The call expression as written, e.g. `"l.Allow"`. The evidence behind the badge: a
+    /// [`Resolution::Candidates`] row that cannot show the reviewer *what* was ambiguous is
+    /// asking them to trust a guess, which is the dishonest UI this crate exists to avoid.
+    pub text: String,
     /// What the call resolves to, and how much this edge is worth. Carried per site, so a
     /// heuristic edge is never rendered as a compiler-backed one.
     pub target: Resolution,

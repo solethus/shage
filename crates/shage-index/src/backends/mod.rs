@@ -1,8 +1,78 @@
-//! The [`IndexBackend`](crate::contract::IndexBackend) implementations.
-//!
-//! Null only, for now. Detection — the code that picks a backend and never blocks startup
-//! doing it — arrives with the scip backend.
+//! The [`IndexBackend`](crate::contract::IndexBackend) implementations, and the detection
+//! that picks one.
 
 pub mod null;
 
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use crate::contract::IndexBackend;
+use crate::heuristic::HeuristicBackend;
+use crate::scip::ScipBackend;
+
 pub use null::NullBackend;
+
+/// Where a SCIP index sits by convention, relative to a repository root.
+pub fn scip_index_path(root: &Path) -> PathBuf {
+    root.join("index.scip")
+}
+
+/// Picks the most precise backend that can actually answer for `root`.
+///
+/// **Detection never errors and never blocks startup.** A missing indexer is silence, not a
+/// warning dialog: every failure falls through to the next tier and the last tier is
+/// [`NullBackend`], which behaves exactly like having no index at all. The order is
+/// precision-first — a compiler-backed index beats a parse of the source, and a parse of
+/// the source beats nothing — and it is deliberately not configurable here. Overriding it
+/// needs a config key, which needs a seam in the TUI that does not exist yet.
+///
+/// The cost is bounded by the tier that wins: reading a `.scip` is one file, and the
+/// fallback parse walks the tree once. Neither reaches the network, and neither runs an
+/// indexer — installing and running one is a decision a user makes, not a side effect of
+/// opening a review.
+pub fn detect(root: &Path) -> Box<dyn IndexBackend> {
+    let index = scip_index_path(root);
+    if index.is_file() {
+        let commit = ScipBackend::sidecar_commit(&index);
+        match ScipBackend::open(&index, root, commit) {
+            // An index that parses but covers nothing is not an index. Zero bytes are a
+            // well-formed protobuf with every field defaulted, so an indexer killed
+            // mid-write leaves a file that opens cleanly and then answers empty for every
+            // query — worse than the tier below it, which works. Falling through is the
+            // only reading of that file that is not a confident zero.
+            Ok(backend) if backend.covers_anything() => return Box::new(backend),
+            Ok(_) => eprintln!(
+                "shage: {} holds no documents — ignoring it and parsing the source instead. \
+                 Re-run the indexer if that is not what you expected.",
+                index.display()
+            ),
+            // Never a dialog, but never silence either: `Corrupt` means the bytes were read
+            // and not understood, which is a fact about the user's index rather than about
+            // this tier, and swallowing it makes a broken index look like a weak resolver.
+            Err(err) => eprintln!("shage: cannot read {}: {err}", index.display()),
+        }
+    }
+    if let Ok(backend) = HeuristicBackend::open(root) {
+        return Box::new(backend);
+    }
+    Box::new(NullBackend)
+}
+
+/// The commit `root` is on, or `None` when it is not a repository.
+///
+/// Never an error: a backend attached to a plain directory still answers every question it
+/// can, it simply cannot say which commit the tree is on.
+pub(crate) fn head_commit(root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let commit = String::from_utf8(output.stdout).ok()?;
+    let commit = commit.trim();
+    (!commit.is_empty()).then(|| commit.to_owned())
+}

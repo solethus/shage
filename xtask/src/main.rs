@@ -1,4 +1,9 @@
 //! Repo automation, invoked as `cargo xtask <cmd>` (alias in .cargo/config.toml).
+
+mod fixtures;
+mod oracle;
+
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// The upstream tag `crates/shage-core/` is vendored from. Bump it on an upstream sync.
@@ -15,10 +20,26 @@ const DECLARED_SEAMS: &[&str] = &[
 ];
 
 fn main() -> ExitCode {
-    match std::env::args().nth(1).as_deref() {
-        Some("seams") => seams(),
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let root = repo_root();
+    match args.first().map(String::as_str) {
+        Some("seams") => seams(&root),
+        Some("fixtures") => match fixtures::run(&root) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("xtask fixtures: {err}");
+                ExitCode::FAILURE
+            }
+        },
+        Some("oracle") => oracle::run(&root, args.iter().any(|arg| arg == "--bless")),
         _ => {
-            eprintln!("usage: cargo xtask seams [--check]");
+            eprintln!(
+                "usage: cargo xtask <seams [--check] | fixtures | oracle [--bless]>\n\
+                 \n  seams     check crates/shage-core against the vendor tag\n  \
+                 fixtures  write the hazard projects into {}/\n  \
+                 oracle    grade the heuristic backend against rust-analyzer",
+                fixtures::DIR
+            );
             ExitCode::from(2)
         }
     }
@@ -31,8 +52,10 @@ fn main() -> ExitCode {
 /// `git diff` — one would disable rename detection, and every file in the slice is a rename
 /// from upstream's repo root, so without `-M` over the whole tree the check reports the
 /// entire vendored source as drift.
-fn seams() -> ExitCode {
+fn seams(root: &Path) -> ExitCode {
     let output = match Command::new("git")
+        .arg("-C")
+        .arg(root)
         .args(["diff", "-M", "--name-status", VENDOR_TAG, "HEAD"])
         .output()
     {
@@ -84,4 +107,15 @@ fn seams() -> ExitCode {
          and to DECLARED_SEAMS in xtask/src/main.rs, or revert the edit."
     );
     ExitCode::FAILURE
+}
+
+/// The repository root, from this crate's manifest rather than the working directory.
+///
+/// `cargo xtask` can be run from any subdirectory, and every path in here is
+/// repository-relative because that is what `SymbolRef::path` promises.
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask/ always has a parent")
+        .to_path_buf()
 }
