@@ -26,7 +26,9 @@ lives in crates upstream has never heard of.
   layers hold contracts and seams, higher layers hold consumers (stacks are linear).
 - Non-interactive only: `gh stack init|add <branch>`, `gh stack submit --auto`,
   `gh stack sync --prune`, `gh stack view --json`, `gh stack merge --yes --squash`.
+  On this fork `submit` cannot open PRs — use `gh pr create --repo solethus/shage` per layer.
 - Upstream syncs: merge `upstream/main` into `main` (never rebase main), then `gh stack sync`.
+  Setup, the full command set and the planned stacks: `docs/WORKFLOW.md`.
 
 ## Commands
     cargo build --workspace              # everything; bare cargo = crates/shage-core only
@@ -42,6 +44,9 @@ lives in crates upstream has never heard of.
     xtask                 seam checking; later fixtures and the oracle
     docs/SEAMS.md         every diverging file under crates/shage-core, with a reason
     docs/MAP.md           one screen, directory → purpose
+    docs/WORKFLOW.md      stacked-PR workflow, upstream sync procedure, planned stacks
+    docs/prompts          the prompt library (01 bootstrap … 09 spike); keep it current
+    docs/plan             dated planning snapshot (interactive HTML) + its corrections
 
 ## Not yet
 No index, no follow panel, no seams wired. The binary is `shage` but still prints

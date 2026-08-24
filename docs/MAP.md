@@ -10,9 +10,12 @@
 | `crates/shage-follow/` | The follow panel: cursor → symbol, follow stack, ranking. Stub. |
 | `xtask/` | Repo automation: `cargo xtask seams` (stub; will diff `crates/shage-core` against the vendor tag). |
 | `.cargo/config.toml` | The `cargo xtask` alias. |
-| `docs/` | `SEAMS.md` (declared divergence from upstream), `MAP.md` (this file), plus upstream's user docs (`CONFIG.md`, `KEYBINDINGS.md`, `REVIEW_CLI.md`, forge guides). |
+| `.impeccable/config.json` | Design-hook config: `docs/plan/**` is ignored because the pages there are a frozen snapshot, not maintained UI. |
+| `docs/` | `SEAMS.md` (declared divergence from upstream), `MAP.md` (this file), `WORKFLOW.md` (stacked PRs, upstream syncs), plus upstream's user docs (`CONFIG.md`, `KEYBINDINGS.md`, `REVIEW_CLI.md`, forge guides). |
+| `docs/plan/` | Dated planning snapshot: the interactive build plan and ecosystem map (HTML) plus `README.md` with the corrections found since. The repo wins on disagreement. |
+| `docs/prompts/` | The prompt library (`01-bootstrap` … `09-spike`) plus `README.md` (repo facts, stack workflow, prompt-to-branch order); versioned with the code, fixed when a prompt produces a bad result. `02-contract.md` is pre-filled for the next run (`index/contract`). |
 | `skills/tuicr/` | Upstream's agent skill bundle (still tuicr-named; the rename is a follow-up). |
-| `.github/workflows/` | Upstream CI. `ci.yml`/`release.yml` minimally patched for the new layout; `build_nix.yml` unverified; release and self-update plumbing still target agavra/tuicr — do not run `shage update`. |
+| `.github/` | `PULL_REQUEST_TEMPLATE.md` (ours); `workflows/` is upstream CI — `ci.yml`/`release.yml` minimally patched for the new layout, `build_nix.yml` unverified; release and self-update plumbing still target agavra/tuicr — do not run `shage update`. |
 | `scripts/demo/`, `public/` | Upstream demo recording tooling and assets (`record-demo.sh` still builds `--bin tuicr`). |
 | `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `RELEASE.md`, `PLAN.md`, `cliff.toml`, `flake.nix` | Upstream root files, untouched; they still describe tuicr (`PLAN.md` is upstream's plan, not ours). |
 | `.tuicrignore` | This repo's own review-ignore file, read by the binary when reviewing this repo. |

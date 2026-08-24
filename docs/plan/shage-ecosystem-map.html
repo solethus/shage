@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>shage — ecosystem map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f5f7f4;
+  --surface:#ffffff;
+  --surface-2:#eef1ec;
+  --surface-3:#e5eae3;
+  --deep-950:#0a1210;
+  --deep-900:#0f1a18;
+  --deep-800:#1b2c28;
+
+  --ink:#101c1a;
+  --ink-2:#2f4340;
+  --ink-3:#57706c;
+  --ink-4:#8298944;
+  --ink-4:#829894;
+
+  --line:#dde4de;
+  --line-2:#c8d3cb;
+
+  --accent:      oklch(0.55 0.11 175);
+  --accent-700:  oklch(0.44 0.11 175);
+  --accent-300:  oklch(0.76 0.10 175);
+  --accent-soft: oklch(0.55 0.11 175 / 0.10);
+
+  /* colour is reserved for state */
+  --have:      oklch(0.56 0.10 200);   /* inherited from the fork */
+  --have-soft: oklch(0.56 0.10 200 / 0.13);
+  --build:     oklch(0.52 0.16 300);   /* you write it */
+  --build-soft:oklch(0.52 0.16 300 / 0.12);
+  --later:     oklch(0.62 0.02 180);   /* parked */
+  --later-soft:oklch(0.62 0.02 180 / 0.14);
+  --risk:      oklch(0.55 0.18 25);
+  --risk-soft: oklch(0.55 0.18 25 / 0.10);
+  --warn:      oklch(0.60 0.13 70);
+  --warn-soft: oklch(0.66 0.13 70 / 0.15);
+
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  --r:6px; --r-lg:12px;
+  --sh-1:0 1px 2px rgba(16,28,26,.05);
+  --sh-2:0 1px 0 rgba(16,28,26,.03), 0 10px 24px -18px rgba(16,28,26,.30);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition-duration:.001ms !important;animation-duration:.001ms !important}}
+body{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+button{font:inherit;cursor:pointer;background:none;border:0;color:inherit}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:3px}
+a{color:var(--accent-700)}
+
+/* ── header ── */
+.hdr{position:relative;overflow:hidden;background:var(--deep-950);color:#e9efec;padding:44px 32px 36px}
+.hdr .orb{position:absolute;right:-140px;top:-160px;width:460px;height:460px;border-radius:50%;background:var(--deep-800);opacity:.5}
+.hdr .in{position:relative;max-width:1180px}
+.brandrow{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.glyph{width:24px;height:24px;border:1.6px solid #e9efec;border-radius:3px;display:grid;place-items:center;flex:none}
+.glyph span{width:10px;height:10px;border:1.6px solid var(--accent-300);border-radius:1px;display:block}
+.brand{font-family:var(--mono);font-weight:600;font-size:13px;letter-spacing:.12em}
+.brand b{color:var(--accent-300);font-weight:600}
+.pill{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:#829894;border:1px solid var(--deep-800);border-radius:999px;padding:3px 10px}
+.backlink{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--accent-300);text-decoration:none}
+.backlink:hover{text-decoration:underline}
+h1{font-weight:600;font-size:clamp(27px,4.4vw,38px);line-height:1.08;letter-spacing:-.02em;margin-bottom:12px}
+h1 span{color:var(--accent-300)}
+.hero-line{max-width:660px;font-size:14px;line-height:1.6;color:#a9bcb7}
+.count-label{margin-top:20px;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.18em;color:var(--accent-300)}
+.chips{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;align-items:center}
+.chip{border:1px solid var(--deep-800);border-radius:var(--r);padding:9px 16px;display:flex;align-items:baseline;gap:10px}
+.chip i{font-style:normal;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;color:#829894}
+.chip b{font-family:var(--mono);font-size:20px;font-weight:600}
+.chip.a b{color:var(--accent-300)}
+.chips .aside{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:#829894;margin-left:6px}
+
+/* ── phases ── */
+.phases{background:var(--surface);border-bottom:1px solid var(--line);padding:18px 32px}
+.sect-k{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);margin-bottom:12px}
+.phrow{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}
+.ph{padding:12px 18px;font-size:13.5px;line-height:1.4;border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);transition:transform .15s,box-shadow .15s}
+.ph:hover{transform:translateY(-1px);box-shadow:var(--sh-2)}
+.ph b{font-weight:600;display:block}
+.ph i{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink-4);display:block;margin-top:2px}
+.ph[data-on="1"]{background:var(--deep-950);border-color:var(--deep-950);color:#e9efec}
+.ph[data-on="1"] i{color:var(--accent-300)}
+.ph.all{font-weight:600;font-size:13px;padding:12px 18px}
+
+/* ── banner ── */
+.banner{padding:20px 32px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.banner[hidden]{display:none}
+.bhead{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px;color:var(--accent-700)}
+.banner p{margin-bottom:12px;max-width:720px;font-size:13.5px;line-height:1.55;color:var(--ink)}
+.btarget{display:inline-block;border:1.5px dashed var(--accent-700);color:var(--accent-700);border-radius:999px;padding:5px 14px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px}
+.tps{display:flex;flex-wrap:wrap;gap:10px}
+.tp{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;font-size:12.5px;line-height:1.45;max-width:290px;box-shadow:var(--sh-1)}
+.tp b{display:block;font-weight:600;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px;color:var(--accent-700)}
+.tp span{color:var(--ink-2)}
+
+/* ── tabs ── */
+.tabs{position:sticky;top:0;z-index:10;background:var(--paper);border-bottom:1px solid var(--line);padding:10px 28px;display:flex;flex-wrap:wrap;gap:6px}
+.tab{padding:7px 13px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;border:1px solid transparent;border-radius:var(--r);color:var(--ink-3)}
+.tab:hover{background:var(--surface);border-color:var(--line)}
+.tab[data-on="1"]{background:var(--deep-950);color:#e9efec;border-color:var(--deep-950)}
+.tab .dot{width:7px;height:7px;border-radius:50%;display:block;flex:none}
+.tab .meta{font-family:var(--mono);font-size:10px;opacity:.75;font-weight:400}
+.tab[data-dim="1"]{opacity:.4}
+
+/* ── detail ── */
+.detail{padding:26px 32px 44px;max-width:1120px}
+h2{font-weight:600;font-size:24px;letter-spacing:-.015em;margin-bottom:6px}
+.why{color:var(--ink-3);margin-bottom:18px;font-size:13.5px;max-width:720px}
+.filters{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.flt{padding:6px 14px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line-2);border-radius:999px;color:var(--ink-3);background:var(--surface)}
+.flt:hover{border-color:var(--ink-4)}
+.flt[data-on="1"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.items{display:flex;flex-direction:column}
+.item{display:grid;grid-template-columns:104px 1fr;gap:16px;padding:14px 12px;align-items:start;border-top:1px solid var(--line);transition:background .15s,opacity .15s}
+.item:first-child{border-top:0}
+.item:hover{background:var(--surface)}
+.item[data-dim="1"]{opacity:.32}
+.item[data-lit="1"]{background:var(--accent-soft);border-radius:var(--r)}
+.pills{display:flex;flex-direction:column;gap:5px;margin-top:2px}
+.pill-st{text-align:center;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:3px 6px;border-radius:3px}
+.st-have{background:var(--have-soft);color:oklch(0.42 0.10 200)}
+.st-build{background:var(--build-soft);color:oklch(0.42 0.16 300)}
+.st-later{background:var(--later-soft);color:var(--ink-3)}
+.st-risk{background:var(--risk-soft);color:oklch(0.45 0.18 25)}
+.iname{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-weight:600;font-size:14.5px;margin-bottom:2px}
+.mini{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;padding:2px 6px;border-radius:3px;background:var(--surface-3);color:var(--ink-3)}
+.mini.p1{background:var(--accent-soft);color:var(--accent-700)}
+.mini.p2{background:var(--build-soft);color:oklch(0.42 0.16 300)}
+.mini.p3{background:var(--warn-soft);color:oklch(0.42 0.13 70)}
+.inote{color:var(--ink-3);font-size:13px;line-height:1.5}
+.empty-note{color:var(--ink-3);font-size:13px;padding:20px 0;border-top:1px solid var(--line)}
+
+/* ── axes ── */
+.axes{border-top:1px solid var(--line);padding:28px 32px 34px;background:var(--surface)}
+h3{font-weight:600;font-size:19px;letter-spacing:-.01em;margin-bottom:4px}
+.axnote{margin-bottom:20px;font-size:12.5px;color:var(--ink-3);max-width:760px}
+.axgrid{display:flex;flex-direction:column;gap:18px}
+.ax{display:grid;grid-template-columns:230px 1fr;gap:18px;align-items:start}
+@media(max-width:820px){.ax{grid-template-columns:1fr;gap:8px}}
+.axh b{display:block;font-weight:600;font-size:13.5px}
+.axh span{display:block;font-size:12px;color:var(--ink-3);margin-top:2px;line-height:1.45}
+.axvals{display:flex;flex-wrap:wrap;gap:8px}
+.axv{border:1px solid var(--line-2);border-radius:var(--r);padding:8px 12px;font-size:12.5px;background:var(--surface);display:flex;align-items:center;gap:8px;transition:opacity .15s}
+.axv[data-dim="1"]{opacity:.3}
+.axv[data-tone="p1"]{border-color:oklch(0.55 0.11 175 / .5);background:var(--accent-soft)}
+.axv[data-tone="p2"]{border-color:oklch(0.52 0.16 300 / .45);background:var(--build-soft)}
+.axv[data-tone="p3"]{border-color:oklch(0.60 0.13 70 / .5);background:var(--warn-soft)}
+.axb{font-family:var(--mono);font-size:8.5px;font-weight:600;letter-spacing:.1em;padding:1px 5px;border-radius:2px;background:var(--surface-3);color:var(--ink-3)}
+
+/* ── bars ── */
+.bars{border-top:1px solid var(--line);padding:28px 32px 50px;background:var(--paper)}
+.barnote{margin-bottom:18px;font-size:12.5px;color:var(--ink-3);max-width:760px}
+.bar{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:center;padding:9px 8px;border-radius:var(--r)}
+.bar:hover{background:var(--surface)}
+@media(max-width:760px){.bar{grid-template-columns:1fr;gap:4px}}
+.barlbl{font-size:12.5px;font-weight:600;text-align:left}
+.barlbl i{font-style:normal;display:block;font-family:var(--mono);font-size:10px;color:var(--ink-4);font-weight:400}
+.rails{display:flex;flex-direction:column;gap:4px}
+.rail{display:flex;align-items:center;gap:9px}
+.rail em{font-style:normal;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--ink-4);width:42px;flex:none}
+.track{flex:1;height:9px;background:var(--surface-3);border-radius:99px;overflow:hidden}
+.track i{display:block;height:100%;border-radius:99px;transition:width .35s ease}
+.track i.have{background:var(--have)}
+.track i.build{background:var(--build)}
+.rail b{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--ink-3);width:52px;text-align:right;flex:none}
+
+footer{border-top:1px solid var(--line);padding:26px 32px 60px;background:var(--surface)}
+footer p{font-size:12.5px;color:var(--ink-3);max-width:78ch;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="orb"></div>
+  <div class="in">
+    <div class="brandrow">
+      <span class="glyph"><span></span></span>
+      <span class="brand">SH<b>AGE</b></span>
+      <span class="pill">ECOSYSTEM MAP · CODE REVIEW WITH AN INDEX</span>
+      <a class="backlink" href="shage.html">← BUILD PLAN</a>
+    </div>
+    <h1>Most of this <span>already exists.</span></h1>
+    <p class="hero-line" id="heroLine"></p>
+    <div class="count-label" id="scopeLabel">COUNTING · WHOLE SYSTEM</div>
+    <div class="chips">
+      <div class="chip"><i>INHERITED</i><b id="cHave"></b></div>
+      <div class="chip a"><i>YOU BUILD</i><b id="cBuild"></b></div>
+      <div class="chip"><i>LATER</i><b id="cLater"></b></div>
+      <span class="aside" id="chipAside">THE FORK IS THE ASSET — COUNT WHAT YOU DON'T HAVE TO WRITE</span>
+    </div>
+  </div>
+</div>
+
+<div class="phases">
+  <div class="sect-k">Phases — light one up to see the slice it needs</div>
+  <div class="phrow" id="phaseRow"></div>
+</div>
+
+<div class="banner" id="banner" hidden>
+  <div class="bhead" id="bHead"></div>
+  <p id="bDesc"></p>
+  <div><span class="btarget" id="bTarget"></span></div>
+  <div class="tps" id="bTps"></div>
+</div>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="detail">
+  <h2 id="fnName"></h2>
+  <p class="why" id="fnWhy"></p>
+  <div class="filters" id="filters"></div>
+  <div class="items" id="items"></div>
+</div>
+
+<div class="axes">
+  <h3>What varies repo to repo</h3>
+  <p class="axnote" id="axNote"></p>
+  <div class="axgrid" id="axGrid"></div>
+</div>
+
+<div class="bars">
+  <h3>Where each area stands</h3>
+  <p class="barnote" id="barNote"></p>
+  <div id="barList"></div>
+</div>
+
+<footer>
+  <p>A planning artefact, not a commitment. "Inherited" means the capability arrives with the tuicr fork and needs renaming or wiring rather than authoring — it is not free, but it is an order of magnitude cheaper than the alternative. Counts move as scope moves; the ratio is the point, not the absolute numbers. Phase assignment reflects the Rust-first, SCIP-first plan: level-3 precision on day one from <code>rust-analyzer scip</code>, breadth and heuristics later.</p>
+</footer>
+
+<script>
+(function(){
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+/* ══ phases ══ */
+const PHASES=[
+{id:"p1", name:"v1 — Rust, indexed", sub:"~10 weeks · 1–2 eng",
+ head:"PHASE ONE — PROVE THE SEAM ON THE LANGUAGE YOU ALREADY HAVE AN INDEXER FOR",
+ desc:"Fork, rename, split into a workspace, and add exactly six seams to the vendored core. Read an index.scip produced by rust-analyzer, classify occurrences with tree-sitter, and render definition and callers in a panel. No database, no second process, no resolver. If this phase does not feel useful on a real pull request, nothing later saves it.",
+ target:"Target: review a real Rust PR and land on the risky file first",
+ tps:[
+  {f:"Fork & structure", w:"Workspace split, six declared seams, SEAMS.md enforced in CI."},
+  {f:"Index", w:"Load index.scip, occurrence roles, enclosing-definition interval tree."},
+  {f:"Classification", w:"Tree-sitter decides call position vs type position vs import."},
+  {f:"Follow panel", w:"Definition and callers, with confidence badges that tell the truth."},
+  {f:"Freshness", w:"Four distinguishable empty states. Every result carries a commit stamp."},
+  {f:"Ranking", w:"Blast radius sorts the file tree. The reason to build any of this."}]},
+{id:"p2", name:"v2 — the UI layer", sub:"~6 weeks · 1–2 eng",
+ head:"PHASE TWO — MAKE IT SOMETHING PEOPLE CHOOSE TO OPEN",
+ desc:"Nothing here makes a review more correct, and two of the decisions are near-impossible to reverse: semantic colour roles, and one overlay stack. The command palette comes early regardless, because it is what stops keybindings from sprawling and it makes every later command free.",
+ target:"Target: a stranger can discover every feature without reading the README",
+ tps:[
+  {f:"Command registry", w:"One source of truth. Keybindings, palette and help are all views of it."},
+  {f:"Themes", w:"JSON themes with semantic roles, ANSI indices, and terminal inheritance."},
+  {f:"Overlays", w:"Palette, theme picker, symbol picker, diagnostics — one stack, one Esc."},
+  {f:"Agent loop", w:"Fork the skill bundle. The agent opens shage in a pane and reads comments back."}]},
+{id:"p3", name:"v3 — breadth", sub:"~5 months · 2–3 eng",
+ head:"PHASE THREE — EVERY OTHER LANGUAGE, AND THE REPOS THAT WON'T BUILD",
+ desc:"Go and TypeScript arrive through their own SCIP indexers, which means the work is orchestration rather than resolution. The tree-sitter fallback tier is for repositories that will not build at all, and it is graded against the compiler-backed tier on every pull request rather than trusted.",
+ target:"Target: useful on a polyglot monorepo without a green build",
+ tps:[
+  {f:"Multi-indexer", w:"Detect, install, run and merge per-language SCIP indexes."},
+  {f:"Fallback tier", w:"Import tables and scope chains for repos with no working build."},
+  {f:"Differential oracle", w:"The compiler grades the heuristic. Assert a floor, never parity."},
+  {f:"semcode bridge", w:"Kernel-shaped C plus the commit corpus SCIP has no concept of."}]}];
+
+/* ══ functional areas ══
+   d = inherited from the fork | b = you build it | later = parked  ══ */
+const AREAS=[
+{id:"review", tab:"Review core", name:"Review core", dot:"have",
+ why:"The reason to fork rather than start from scratch. This entire column arrives working on day one — it is the single largest argument for the whole approach.",
+ items:[
+  {n:"Continuous diff viewer", s:"have", in:["p1"], note:"Every changed file in one scrollable stream, sliced by offset. Already handles wrapping, side-by-side and unified."},
+  {n:"Vim keybindings & modes", s:"have", in:["p1"], note:"j/k, Ctrl-d/u, {} files, [] hunks, visual mode for range comments. A complete modal model you do not design."},
+  {n:"Line, range, file & review comments", s:"have", in:["p1"], note:"Four comment scopes with typed categories. The persistence, locking and merge semantics are done."},
+  {n:"Review tracking, file and hunk", s:"have", in:["p1"], note:"Persisted across sessions with a manifest-backed store and atomic writes."},
+  {n:"Syntax highlighting", s:"have", in:["p1"], note:"syntect plus bat-compatible tmTheme files, including ANSI placeholder translation."},
+  {n:"Search within the diff", s:"have", in:["p1"], note:"/ search with match highlighting patched over content spans."},
+  {n:"File-tree filters", s:"have", in:["p1"], note:"Include/exclude regex, path search, hide-reviewed — a view over the file list, never a mutation."},
+  {n:"Ordering by blast radius", s:"build", in:["p1"], note:"The one genuinely new thing in this area. Sort and annotate the file tree by downstream impact instead of by path."},
+  {n:"Symbol badge in the hunk gutter", s:"build", in:["p1"], note:"▸ (*Bucket).Allow — 4 callers, 17 transitive. Cheapest possible first feature: one query per hunk, no new UI mode."},
+  {n:"Inline symbol history above a hunk", s:"build", in:["p3"], note:"Archaeology at the point of decision. Needs the commit corpus, so it waits for the semcode bridge."}]},
+
+{id:"index", tab:"Index & symbols", name:"Index & symbols", dot:"build",
+ why:"The new domain. Compiles without ratatui, without crossterm and without the forked core — which is what lets it be tested fast and reused from a CLI.",
+ items:[
+  {n:"IndexBackend trait & contract types", s:"build", in:["p1"], note:"SymbolRef, CallSite, Confidence, IndexStamp, Blast. Owned and Send, because everything crosses an mpsc channel."},
+  {n:"NullBackend", s:"build", in:["p1"], note:"Returns empty, is the default, and makes an install with no indexer behave exactly like upstream. Not a nicety — the reason the feature is adoptable."},
+  {n:"SCIP loader", s:"build", in:["p1"], note:"Protobuf in, contract types out. Range encoding is 3 ints for single-line and 4 for multi-line; never assume 4."},
+  {n:"Enclosing-definition interval tree", s:"build", in:["p1"], note:"An occurrence maps to whichever definition's range contains it. This is how a reference becomes a caller."},
+  {n:"Call-site classification", s:"build", in:["p1"], note:"Tree-sitter answers call position vs type position vs import vs doc link. Unknown stays Unknown and renders as such."},
+  {n:"Callers, callees, transitive walk", s:"build", in:["p1"], note:"Bounded depth always, with cycle detection. An unbounded walk on a real workspace reads as a crash."},
+  {n:"Blast radius scoring", s:"build", in:["p1"], note:"Direct, transitive at depth two, packages touched, exported-surface weighting, test de-weighting."},
+  {n:"Freshness stamps & staleness states", s:"build", in:["p1"], note:"No API returns results without a stamp. An unstamped empty list is indistinguishable from a confident zero."},
+  {n:"Symbols-in-diff mapping", s:"build", in:["p1"], note:"Given a patch, which symbols does it touch. Everything downstream — badges, ranking, history — starts here."},
+  {n:"Multi-language SCIP orchestration", s:"build", in:["p3"], note:"Detect languages, run the right indexer, merge indexes. Prior art exists in Rust and is worth reading first."},
+  {n:"Tree-sitter fallback resolver", s:"build", in:["p3"], note:"Import tables and scope chains for repos that will not build. Graded, not trusted."},
+  {n:"semcode MCP backend", s:"later", in:["p3"], note:"Kernel-shaped C without compile_commands.json, plus the commit corpus. Additive, never foundational."},
+  {n:"Vector / semantic search", s:"later", in:[], note:"Deliberately parked. A reviewer wants the callers of this symbol, not the ten functions that feel similar to it."}]},
+
+{id:"ui", tab:"UI & themes", name:"UI, themes & overlays", dot:"build",
+ why:"Post-core by design. Two decisions here are load-bearing — semantic colour roles and a single overlay stack — and both are far cheaper before there are twenty widgets than after.",
+ items:[
+  {n:"Bundled themes & theme resolution", s:"have", in:["p1"], note:"Twenty-plus themes with a documented precedence chain and local theme files already ship with the fork."},
+  {n:"Help overlay & status hints", s:"have", in:["p1"], note:"Exists. The trap is that it becomes a fourth place a keybinding is written down."},
+  {n:"Confirm dialog", s:"have", in:["p1"], note:"Reuse it. Do not write a second one because yours needs an extra line."},
+  {n:"Command registry", s:"build", in:["p2"], note:"One source of truth for every action. Keybindings, palette, help overlay and the keybindings doc all generated from it."},
+  {n:"Command palette", s:"build", in:["p2"], note:"The one that matters. Shows each command's binding beside it, so it teaches the shortcuts rather than competing with them."},
+  {n:"Semantic colour roles", s:"build", in:["p2"], note:"An enum, not hex at the call site. The single change that makes every future theme a data file instead of a refactor."},
+  {n:"JSON theme schema & loader", s:"build", in:["p2"], note:"defs, \"none\" to inherit the terminal, ANSI indices 0–15. Validate into a resolved struct before swapping — a bad theme is a status-bar message, never a stack trace."},
+  {n:"Overlay stack", s:"build", in:["p2"], note:"One z-order, one Esc path, keys route to the top layer only. Seven bespoke popups is seven dismiss handlers and one of them is wrong."},
+  {n:"Theme picker with live preview", s:"build", in:["p2"], note:"Preview as the selection moves, commit on Enter, revert on Esc. Choosing from a list of names is guesswork."},
+  {n:"Symbol & file pickers", s:"build", in:["p2"], note:"The same picker widget with a different source list. If the palette is built properly this is config, not a component."},
+  {n:"Toasts", s:"build", in:["p2"], note:"Reindex finished, theme written, submit failed. The alternative is a modal for things that do not deserve one."},
+  {n:"Diagnostics view", s:"build", in:["p2"], note:"Which indexer, which commit, how stale, last query time. Turns most bug reports into a screenshot containing the answer."},
+  {n:"Mouse-first interaction", s:"later", in:[], note:"Explicitly refused. Two interaction models to maintain, for an audience that installed a vim-keybound TUI."},
+  {n:"Sixel / kitty graphics", s:"later", in:[], note:"Works in about a third of terminals and degrades to garbage in the rest. A ranked list beats a rendered graph anyway."}]},
+
+{id:"vcs", tab:"VCS & forges", name:"VCS & forge integration", dot:"have",
+ why:"Entirely inherited, and worth more than it looks: three version-control systems and three forges behind two traits that already prove the pattern the index backend copies.",
+ items:[
+  {n:"Git backend (libgit2 + CLI)", s:"have", in:["p1"], note:"libgit2 by default, git CLI automatically for sparse checkouts, with a startup warning when that overrides."},
+  {n:"Jujutsu backend", s:"have", in:["p1"], note:"Always compiled. Note the gap: SCIP and semcode both key on git object identity, so jj users get review without an index."},
+  {n:"Mercurial backend", s:"have", in:["p1"], note:"Always compiled. Same index caveat as jj."},
+  {n:"Strict hunk parser", s:"have", in:["p1"], note:"Count-driven over structured patches. Path metadata comes from git --raw, never from display headers."},
+  {n:"GitHub PR review & submit", s:"have", in:["p1"], note:"List, open, inline comments, review threads, draft/approve/request-changes, payload over stdin."},
+  {n:"GitLab MR review & submit", s:"have", in:["p1"], note:"Discussion notes, approvals, diff versions."},
+  {n:"Bitbucket Cloud PR review", s:"have", in:["p1"], note:"Cloud only; Data Center speaks REST 1.0 and is deliberately unclaimed."},
+  {n:"Context expansion from the remote", s:"have", in:["p1"], note:"Fetch lines outside the hunk from the forge, so gaps expand without a local checkout."},
+  {n:"Indexing a fetched PR head", s:"build", in:["p3"], note:"A fork's PR head has no rows in any index. Either index the fetched ref or show the stamp honestly."}]},
+
+{id:"agent", tab:"Agent loop", name:"Agent integration", dot:"have",
+ why:"The dogfooding loop, and the reason this tool improves fast: you review the tool's own pull requests inside the tool, with an agent picking your comments back up as its next instruction.",
+ items:[
+  {n:"Structured markdown export", s:"have", in:["p1"], note:"Numbered, anchored comments an agent can parse. The numbered list is the only guaranteed-stable part."},
+  {n:"Review CLI emitting JSON", s:"have", in:["p1"], note:"list, add, comments — without opening the TUI. Sessions carry a slug, a kind and an active flag."},
+  {n:"Clipboard & stdout export", s:"have", in:["p1"], note:"y copies, --stdout pipes. Works with any agent, no integration required."},
+  {n:"Split-pane skill bundle", s:"have", in:["p2"], note:"Inherited, but every invocation inside it names the old binary. Rename it in the same PR as the fork or it breaks silently in someone else's session."},
+  {n:"Index context in the export", s:"build", in:["p2"], note:"Attach blast radius and caller counts to exported comments, so the agent knows which feedback is load-bearing."},
+  {n:"Agent-authored index queries", s:"later", in:[], note:"Let the agent ask the index directly rather than through the review. Interesting, and a scope trap before the basics work."}]},
+
+{id:"quality", tab:"Testing & CI", name:"Testing, CI & release", dot:"build",
+ why:"The unusual part: resolution correctness is hard to assert by hand, so a compiler-backed index becomes the oracle that grades the heuristic one, automatically, on every pull request.",
+ items:[
+  {n:"Existing test suite", s:"have", in:["p1"], note:"Inherited and passing. The bootstrap PR's definition of done is that it still passes identically."},
+  {n:"Seam checker", s:"build", in:["p1"], note:"cargo xtask seams --check diffs the core against the vendored tag and fails on undeclared drift. Wire it before there is anything to declare."},
+  {n:"Fixture generator", s:"build", in:["p1"], note:"Real cargo projects, each isolating one resolution hazard. Generated from code — never commit a .scip file or it becomes a museum piece."},
+  {n:"Differential oracle", s:"build", in:["p3"], note:"rust-analyzer grades the tree-sitter tier. Assert a floor against a committed baseline, never parity."},
+  {n:"Snapshot rendering tests", s:"build", in:["p2"], note:"TestBackend at 120×24 and 80×24. Usable content area is smaller than the frame once borders are drawn."},
+  {n:"Property tests for line attribution", s:"build", in:["p1"], note:"A symbol attributed to a line always has a range containing it, or is None. Never a neighbour."},
+  {n:"Staleness state tests", s:"build", in:["p1"], note:"Four states, four snapshots. This is where trust is won or lost."},
+  {n:"Upstream rebase CI", s:"build", in:["p2"], note:"A scheduled job that attempts the rebase and reports. Fork drift becomes an event, not a discovery."},
+  {n:"Release pipeline & installer", s:"have", in:["p3"], note:"Inherited, but pointed at upstream's infrastructure. Delete or repoint before publishing anything."}]},
+
+{id:"docs", tab:"Docs & prompts", name:"Docs & the prompt library", dot:"build",
+ why:"Treated as source, not as an afterthought — because the repo structure and the prompt library are the same design decision, and a stale doc is worse than a missing one.",
+ items:[
+  {n:"Root AGENTS.md as a router", s:"build", in:["p1"], note:"Sixty lines that point at slice-local files. Copying upstream's thirty kilobytes teaches an agent a repo you no longer have."},
+  {n:"Per-slice AGENTS.md", s:"build", in:["p1"], note:"Purpose, public surface, invariants, file plan, test plan. An agent reads one of these plus contract.rs and nothing else."},
+  {n:"docs/MAP.md", s:"build", in:["p1"], note:"One screen, directory to purpose. Updated in the same commit that adds a directory."},
+  {n:"docs/SEAMS.md", s:"build", in:["p1"], note:"Every modified core file with a one-line reason. Six at the start; twenty means you no longer have a bounded fork."},
+  {n:"The nine prompts", s:"build", in:["p1"], note:"Bootstrap, contract, implement, review, test, rebase, debug, docs, spike. Versioned with the code and fixed when they produce a bad result."},
+  {n:"Decision records", s:"build", in:["p2"], note:"One page each, numbered, never edited — superseded. The value is the options you rejected."},
+  {n:"Generated keybinding docs", s:"build", in:["p2"], note:"From the command registry. The structural fix for a binding living in four places."},
+  {n:"Public README & attribution", s:"build", in:["p2"], note:"Say it is a fork in the first paragraph. Hiding the lineage is the fastest way to make an enemy of the person best placed to help."}]}];
+
+/* ══ deployment axes ══ */
+const AXES=[
+{name:"Where symbols come from", note:"The indexer decides how much you have to write. Choosing badly here is the difference between a weekend and a year.",
+ vals:[{l:"rust-analyzer scip", m:["p1"]},{l:"scip-go · scip-typescript", m:["p2","p3"]},{l:"scip-clang", m:["p3"], q:true},{l:"tree-sitter, no build", m:["p3"]},{l:"semcode MCP", m:["p3"], q:true}]},
+{name:"Where the index lives", note:"A per-checkout artefact is simple and duplicated. A shared one is efficient and a service you now operate.",
+ vals:[{l:".shage/index.scip in the repo", m:["p1"]},{l:"Cached per checkout", m:["p2"]},{l:"Fetched from CI", m:["p3"], q:true},{l:"Shared daemon", m:[], q:true}]},
+{name:"When it refreshes", note:"Staleness is not a bug to eliminate, it is a state to render honestly. But how often you re-run decides how often it is visible.",
+ vals:[{l:"Manual :reindex", m:["p1"]},{l:"On review open", m:["p2"]},{l:"Watch + debounce", m:["p3"]},{l:"Working-tree overlay", m:["p3"], q:true}]},
+{name:"How precise the edges are", note:"A wrong edge is worse than a missing one, so whichever tier answers, the badge has to say which.",
+ vals:[{l:"Compiler-backed · exact", m:["p1"]},{l:"Scoped heuristic", m:["p3"]},{l:"Name match", m:[], q:true},{l:"Mixed, badged per row", m:["p2"]}]},
+{name:"Who installs what", note:"Every extra thing a user must install before the feature works is a cliff in adoption. Measure it in binaries, not in steps.",
+ vals:[{l:"Nothing — index absent, tool works", m:["p1"]},{l:"rust-analyzer, already present", m:["p1"]},{l:"One indexer per language", m:["p3"]},{l:"An indexed database", m:["p3"], q:true}]}];
+
+const PT={p1:"V1",p2:"V2",p3:"V3"};
+const SLABEL={have:"Inherited",build:"Build",later:"Later"};
+
+let state={fn:"review", filter:"all", init:null};
+
+/* ══ derived ══ */
+function pool(){
+  return AREAS.flatMap(a=>a.items.map(i=>Object.assign({area:a.id},i)));
+}
+function inPhase(it){ return !state.init || (it.in||[]).indexOf(state.init)>=0; }
+
+function render(){
+  const P = pool();
+  const scoped = state.init ? P.filter(inPhase) : P;
+  const nHave = scoped.filter(i=>i.s==="have").length;
+  const nBuild= scoped.filter(i=>i.s==="build").length;
+  const nLater= P.filter(i=>i.s==="later").length;
+  const ph = state.init ? PHASES.find(p=>p.id===state.init) : null;
+
+  $("heroLine").textContent = ph
+    ? ph.desc
+    : "shage is a code-review TUI that knows what your change touches. It is a bounded fork of tuicr, so the entire review surface — diff, comments, three version-control systems, three forges, the agent loop — arrives working. What you actually write is the index domain, the follow panel and the ranking. This map is the inventory: "+P.length+" pieces across "+AREAS.length+" areas, and roughly a third of them are already done by someone else.";
+  $("scopeLabel").textContent = "COUNTING · " + (ph ? ph.name.toUpperCase() : "WHOLE SYSTEM");
+  $("cHave").textContent  = nHave;
+  $("cBuild").textContent = nBuild;
+  $("cLater").textContent = nLater;
+  $("chipAside").textContent = ph
+    ? "SLICE OF THE SYSTEM THIS PHASE NEEDS"
+    : "THE FORK IS THE ASSET — COUNT WHAT YOU DON'T HAVE TO WRITE";
+
+  // phases
+  $("phaseRow").innerHTML = PHASES.map(p=>
+    '<button class="ph" data-ph="'+p.id+'" data-on="'+(state.init===p.id?1:0)+'"><b>'+esc(p.name)+'</b><i>'+esc(p.sub)+'</i></button>'
+  ).join("") + '<button class="ph all" data-ph="" data-on="'+(state.init?0:1)+'">Show the whole system</button>';
+  $("phaseRow").querySelectorAll("[data-ph]").forEach(b=>b.addEventListener("click",()=>{
+    state.init = b.dataset.ph || null; render();
+  }));
+
+  // banner
+  const bn=$("banner");
+  if(ph){
+    bn.hidden=false;
+    $("bHead").textContent=ph.head;
+    $("bDesc").textContent=ph.desc;
+    $("bTarget").textContent=ph.target;
+    $("bTps").innerHTML=ph.tps.map(t=>'<div class="tp"><b>'+esc(t.f)+'</b><span>'+esc(t.w)+'</span></div>').join("");
+  } else bn.hidden=true;
+
+  // tabs
+  $("tabs").innerHTML = AREAS.map(a=>{
+    const mine=a.items.filter(inPhase);
+    const b=mine.filter(i=>i.s==="build").length;
+    const dotc = a.dot==="have" ? "var(--have)" : "var(--build)";
+    return '<button class="tab" data-fn="'+a.id+'" data-on="'+(state.fn===a.id?1:0)+'" data-dim="'+(state.init&&mine.length===0?1:0)+'">'+
+      '<span>'+esc(a.tab)+'</span><span class="dot" style="background:'+dotc+'"></span>'+
+      '<span class="meta">'+mine.length+(b?" · "+b+" build":"")+'</span></button>';
+  }).join("");
+  $("tabs").querySelectorAll("[data-fn]").forEach(b=>b.addEventListener("click",()=>{ state.fn=b.dataset.fn; render(); }));
+
+  // detail
+  const area = AREAS.find(a=>a.id===state.fn);
+  $("fnName").textContent = area.name;
+  $("fnWhy").textContent = area.why;
+
+  const FILTERS=[["all","Everything"],["have","Inherited"],["build","You build it"],["later","Later"]];
+  $("filters").innerHTML = FILTERS.map(([k,l])=>{
+    const n = k==="all" ? area.items.length : area.items.filter(i=>i.s===k).length;
+    return '<button class="flt" data-flt="'+k+'" data-on="'+(state.filter===k?1:0)+'">'+esc(l)+' · '+n+'</button>';
+  }).join("");
+  $("filters").querySelectorAll("[data-flt]").forEach(b=>b.addEventListener("click",()=>{ state.filter=b.dataset.flt; render(); }));
+
+  const shown = area.items.filter(i=> state.filter==="all" || i.s===state.filter );
+  $("items").innerHTML = shown.length ? shown.map(i=>{
+    const lit = state.init && (i.in||[]).indexOf(state.init)>=0;
+    const dim = state.init && !lit;
+    const tags=(i.in||[]).map(p=>'<span class="mini '+p+'">'+PT[p]+'</span>').join("");
+    return '<div class="item" data-lit="'+(lit?1:0)+'" data-dim="'+(dim?1:0)+'">'+
+      '<div class="pills"><span class="pill-st st-'+i.s+'">'+SLABEL[i.s]+'</span></div>'+
+      '<div><div class="iname"><span>'+esc(i.n)+'</span>'+tags+'</div>'+
+      '<div class="inote">'+esc(i.note)+'</div></div></div>';
+  }).join("") : '<p class="empty-note">Nothing in this area matches that filter.</p>';
+
+  // axes
+  const combos = AXES.reduce((a,x)=>a*x.vals.length,1);
+  $("axNote").textContent = combos+" combinations across five axes, and the three phases step rightward along every one of them. Each axis has to stay a configuration of one binary; the day you ship a separate build per language, this stops being a product. A question mark means confirm it against a real repository before you plan around it.";
+  $("axGrid").innerHTML = AXES.map(ax=>
+    '<div class="ax"><div class="axh"><b>'+esc(ax.name)+'</b><span>'+esc(ax.note)+'</span></div>'+
+    '<div class="axvals">'+ax.vals.map(v=>{
+      const tone = v.m.length===1 ? v.m[0] : "";
+      const dim  = state.init && v.m.indexOf(state.init)===-1;
+      const badges = v.m.map(m=>'<span class="axb">'+PT[m]+'</span>').join("") + (v.q?'<span class="axb">?</span>':'');
+      return '<div class="axv" data-tone="'+tone+'" data-dim="'+(dim?1:0)+'"><span>'+esc(v.l)+'</span>'+badges+'</div>';
+    }).join("")+'</div></div>').join("");
+
+  // bars
+  $("barNote").textContent = (ph? "Coloured segment = lands in "+ph.name+". " : "")+
+    "Each rail fills to 100% of what applies to it. Pieces parked as Later sit outside both rails and are counted in the row label. Click a row to open that area.";
+  $("barList").innerHTML = AREAS.map(a=>{
+    const live=a.items.filter(i=>i.s!=="later");
+    const h=live.filter(i=>i.s==="have").length, b=live.filter(i=>i.s==="build").length;
+    const t=Math.max(1,live.length), lt=a.items.length-live.length;
+    return '<button class="bar" data-bar="'+a.id+'" style="width:100%">'+
+      '<span class="barlbl">'+esc(a.tab)+'<i>'+live.length+' live'+(lt?" · "+lt+" later":"")+'</i></span>'+
+      '<span class="rails">'+
+        '<span class="rail"><em>HAVE</em><span class="track"><i class="have" style="width:'+(h/t*100)+'%"></i></span><b>'+h+'/'+t+'</b></span>'+
+        '<span class="rail"><em>BUILD</em><span class="track"><i class="build" style="width:'+(b/t*100)+'%"></i></span><b>'+b+'/'+t+'</b></span>'+
+      '</span></button>';
+  }).join("");
+  $("barList").querySelectorAll("[data-bar]").forEach(b=>b.addEventListener("click",()=>{
+    state.fn=b.dataset.bar; state.filter="all"; render();
+    document.querySelector(".tabs").scrollIntoView({behavior:"smooth",block:"start"});
+  }));
+}
+render();
+})();
+</script>
+</body>
+</html>
