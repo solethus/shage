@@ -77,6 +77,13 @@ fixed. What is defended is that the numbers never go *down* without someone sayi
 A fixture the floor has never seen is **not** a regression. It is new work, and failing on it
 would mean a new fixture could never be added without a red build; the run names it instead.
 
+**The floor is a measurement of one indexer's answers**, so it is only comparable against the
+version that produced it. A newer rust-analyzer resolves things the old one did not and the
+numbers move for reasons that have nothing to do with our resolver, which reads as a
+regression and is not one. That is why the oracle job in `ci.yml` pins its toolchain, and why
+the run prints `graded against rust-analyzer <version>` above the table. Bump the pin and
+re-bless in the same commit, never separately.
+
 ### rust-analyzer
 
 The availability check runs `rust-analyzer --version` rather than probing `PATH`, because on
@@ -98,7 +105,8 @@ xtask depends on `shage-index` and nothing else. It reads `.scip` through the sl
 that format and never parses a protobuf itself: a second reader is a second thing to be
 wrong, and the pass under test would end up grading itself.
 
-## Carry-over
+## In CI
 
-`ci.yml` still runs bare `cargo check`/`clippy`/`test` against `default-members`. Repointing
-it at `--workspace` and adding an oracle job is the follow-up this work assumes.
+`ci.yml` runs `cargo xtask fixtures` then `cargo xtask oracle` on every pull request, in a job
+that installs rust-analyzer as a rustup component at the pinned toolchain. A regression
+against the floor fails the build and names the fixture and the metric.
