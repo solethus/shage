@@ -53,3 +53,17 @@ Work never lands on `main` directly; each prompt names the branch it produces.
 | 02 → 03 → 04 | `follow/blast` | blast radius and the ranked file tree |
 
 Next up: `02-contract.md` carries a pre-filled "next run" block for `index/contract`.
+
+## Carry-overs
+Something a design note deferred, and the branch that has to discharge it. Add a row when
+you defer; delete it when the branch lands. Written down so the inheriting run does not
+have to rediscover why.
+
+| branch | obligation | from |
+|---|---|---|
+| `index/scip` | write `crates/shage-index/src/backends/AGENTS.md`. The crate note covers `null.rs` alone; `backends/` becomes a real slice once a second backend lands | `crates/shage-index/AGENTS.md` |
+| `index/scip` | backend detection — `detect()` and the config key that picks one. Detection never errors and never blocks startup: a missing indexer is silence, not a warning dialog | same |
+| whichever of `index/classify` or `follow/panel` first renders a `Candidates` badge | add the call expression to `CallSite` (`text`, e.g. `"l.Allow"`). It is the evidence for a candidate edge, and a candidate rendered without its evidence is the dishonest-UI failure this project exists to avoid | same |
+| `follow/blast` | add `is_test` to `Blast` for ranking's test de-weighting. `exported` is already on `Blast`; neither belongs on `SymbolRef`, which stays a location | same |
+| `index/seams` | decide how a backend reaches a worker thread. `IndexBackend: Send` allows a move, not sharing, and every method takes `&self`. Upstream does not share either — the diff-watch worker moves a `Copy` options struct and re-opens the VCS inside the thread (`crates/shage-core/src/app/diff_load.rs:1046`) — but re-opening is cheap for a git handle and expensive for a SCIP index. Three options: a `Sync` bound plus `Arc`, a `handle()` returning a cheap Send clone (what `docs/plan/shage.html` sketches), or open-options re-opened per worker | prompt 04 review of PR #3 |
+| `index/scip` | test the four invariants `NullBackend` satisfies vacuously: `SymbolRef::path` repository-relative with no `..`, `Blast::packages` sorted and deduplicated, `history` most-recent-first, and `limit` a hard cap | same |
