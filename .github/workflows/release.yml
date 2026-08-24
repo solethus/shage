@@ -43,7 +43,7 @@ jobs:
       - name: Get current version
         id: current
         run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION=$(grep '^version = ' crates/shage-core/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Calculate new version
@@ -70,7 +70,7 @@ jobs:
 
       - name: Update Cargo.toml version
         run: |
-          sed -i 's/^version = ".*"/version = "${{ steps.new.outputs.version }}"/' Cargo.toml
+          sed -i 's/^version = ".*"/version = "${{ steps.new.outputs.version }}"/' crates/shage-core/Cargo.toml
 
       - name: Update Cargo.lock
         run: cargo generate-lockfile
@@ -88,7 +88,7 @@ jobs:
             Bumps version from ${{ steps.current.outputs.version }} to ${{ steps.new.outputs.version }}.
 
             **Changes included:**
-            - Version bump in `Cargo.toml`
+            - Version bump in `crates/shage-core/Cargo.toml`
             - Updated `CHANGELOG.md` (auto-generated from commits)
 
             Once merged, this will automatically:
@@ -99,7 +99,11 @@ jobs:
 
   publish:
     name: Publish Release
-    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    # shage: publishing disabled. The crate name and README still say tuicr, and the vendored
+    # self-updater still asks for `tuicr-<version>-<target>` assets while this workflow now
+    # uploads `shage-*` ones — so a published release would be found by nobody. Re-enabling
+    # needs both names reconciled, not just this `if:`.
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -113,7 +117,7 @@ jobs:
       - name: Get version from Cargo.toml
         id: version
         run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION=$(grep '^version = ' crates/shage-core/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
@@ -200,7 +204,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          binary=target/${{ matrix.build_target }}/release/tuicr
+          binary=target/${{ matrix.build_target }}/release/shage
           test "$("$binary" --version)" = "tuicr ${{ steps.version.outputs.version }}"
           if [[ '${{ matrix.build_target }}' == *-musl ]]; then
             if readelf -lW "$binary" | grep -Eq '(^|[[:space:]])INTERP([[:space:]]|$)'; then
@@ -218,18 +222,18 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.build_target }}/release
-          tar -czvf ../../../tuicr-${{ steps.version.outputs.version }}-${{ matrix.build_target }}.tar.gz tuicr
+          tar -czvf ../../../shage-${{ steps.version.outputs.version }}-${{ matrix.build_target }}.tar.gz shage
 
       - name: Package binary (windows)
         if: runner.os == 'Windows'
         run: |
           cd target/${{ matrix.build_target }}/release
-          7z a ../../../tuicr-${{ steps.version.outputs.version }}-${{ matrix.build_target }}.zip tuicr.exe
+          7z a ../../../shage-${{ steps.version.outputs.version }}-${{ matrix.build_target }}.zip shage.exe
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           files: |
-            tuicr-*.tar.gz
-            tuicr-*.zip
+            shage-*.tar.gz
+            shage-*.zip
